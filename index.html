@@ -1588,8 +1588,83 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             }
         });
 
-        // Add debugging tools
-        window.debugMarkers = function() {
+        // Add manual test with your exact data
+        window.testWithYourData = async function() {
+            console.log('🧪 Testing with your exact Google Sheets data...');
+            
+            // Your exact data from the screenshot
+            const testData = [
+                ['Name', 'Address', 'Number'],  // Header row
+                ['reg1', '266 Regent Cir, Inglewood, CA 90301', '10'],
+                ['hill1', '258 N Hillcrest Blvd, Inglewood, CA 90301', '12'],
+                ['grac1', '512 Grace Ave, Inglewood, CA 90301', '20']
+            ];
+            
+            console.log('Test data:', testData);
+            
+            try {
+                await processLocationsData(testData);
+                console.log('✅ Test completed - check map for markers!');
+                return 'Test completed successfully';
+            } catch (error) {
+                console.error('❌ Test failed:', error);
+                return 'Test failed: ' + error.message;
+            }
+        };
+
+        // Test individual address geocoding
+        window.testSingleAddress = async function(address = '266 Regent Cir, Inglewood, CA 90301') {
+            console.log(`🔍 Testing single address: "${address}"`);
+            
+            if (!window.google || !window.google.maps) {
+                console.error('❌ Google Maps not loaded');
+                return;
+            }
+            
+            const geocoder = new google.maps.Geocoder();
+            
+            try {
+                const result = await geocodeAddress(geocoder, address);
+                console.log('✅ Geocoding successful:', {
+                    address: address,
+                    lat: result.lat(),
+                    lng: result.lng()
+                });
+                
+                // Create a test marker at this location
+                const testMarker = new google.maps.Marker({
+                    position: result,
+                    map: map,
+                    title: 'TEST: ' + address,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: '#FF0000',
+                        fillOpacity: 1,
+                        strokeColor: '#FFFFFF',
+                        strokeWeight: 3,
+                        scale: 20
+                    },
+                    label: {
+                        text: 'TEST',
+                        color: '#FFFFFF',
+                        fontSize: '10px',
+                        fontWeight: 'bold'
+                    }
+                });
+                
+                console.log('🎯 Red test marker created - it should be visible on the map!');
+                
+                // Pan map to this location
+                map.setCenter(result);
+                map.setZoom(16);
+                
+                return result;
+                
+            } catch (error) {
+                console.error('❌ Geocoding failed:', error);
+                return null;
+            }
+        };
             console.log('=== MARKER DEBUG INFO ===');
             console.log('Total markers array length:', markers.length);
             console.log('Map object:', map);
