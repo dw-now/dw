@@ -613,26 +613,32 @@ Ready to initialize!`, 'success');
             }
         }
 
-        async function switchToDemoMode() {
+        function switchToDemoMode() {
             try {
                 appState.apiKey = 'DEMO_MODE';
                 appState.sheetId = 'demo';
                 
                 if (supabase) {
-                    await supabase
+                    supabase
                         .from('app_configurations')
                         .upsert({
                             user_id: 'demo_user',
                             google_maps_api_key: 'DEMO_MODE',
                             google_sheets_id: 'demo',
                             sheet_range: 'Sheet1!A:C'
-                        }, { onConflict: 'user_id' });
+                        }, { onConflict: 'user_id' })
+                        .then(() => {
+                            console.log('Demo config saved to Supabase');
+                        })
+                        .catch(console.error);
                 }
                 
                 updateStatus('Switching to demo mode...');
-                await initializeApp();
-                
-                showAlert('Demo mode activated! You can now test the interface. Set up your Google Maps API key later for full functionality.', 'success');
+                initializeApp().then(() => {
+                    showAlert('Demo mode activated! You can now test the interface. Set up your Google Maps API key later for full functionality.', 'success');
+                }).catch(error => {
+                    showAlert('Failed to switch to demo mode: ' + error.message, 'error');
+                });
                 
             } catch (error) {
                 showAlert('Failed to switch to demo mode: ' + error.message, 'error');
@@ -964,7 +970,7 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                 
                 // Clear existing interval and start faster refresh (every 10 seconds)
                 if (updateInterval) clearInterval(updateInterval);
-                updateInterval = setInterval(() => {
+                updateInterval = setInterval(function() {
                     refreshData();
                 }, 10000);
                 
@@ -979,7 +985,7 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                 
                 // Switch back to normal refresh (every 30 seconds)
                 if (updateInterval) clearInterval(updateInterval);
-                updateInterval = setInterval(() => {
+                updateInterval = setInterval(function() {
                     refreshData();
                 }, 30000);
                 
@@ -1628,7 +1634,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             return marker;
         };
 
-        window.testWithYourData = async function() {
+        window.testWithYourData = function() {
             console.log('🧪 Testing with your exact Google Sheets data...');
             
             const testData = [
@@ -1640,17 +1646,16 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             
             console.log('Test data:', testData);
             
-            try {
-                await processLocationsData(testData);
+            processLocationsData(testData).then(() => {
                 console.log('✅ Test completed - check map for markers!');
                 return 'Test completed successfully';
-            } catch (error) {
+            }).catch(error => {
                 console.error('❌ Test failed:', error);
                 return 'Test failed: ' + error.message;
-            }
+            });
         };
 
-        window.testSingleAddress = async function(address = '266 Regent Cir, Inglewood, CA 90301') {
+        window.testSingleAddress = function(address = '266 Regent Cir, Inglewood, CA 90301') {
             console.log(`🔍 Testing single address: "${address}"`);
             
             if (!window.google || !window.google.maps) {
@@ -1660,8 +1665,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             
             const geocoder = new google.maps.Geocoder();
             
-            try {
-                const result = await geocodeAddress(geocoder, address);
+            geocodeAddress(geocoder, address).then(result => {
                 console.log('✅ Geocoding successful:', {
                     address: address,
                     lat: result.lat(),
@@ -1695,51 +1699,37 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                 
                 return result;
                 
-            } catch (error) {
+            }).catch(error => {
                 console.error('❌ Geocoding failed:', error);
                 return null;
-            }
+            });
         };
 
         // Auto-refresh every 2 minutes when active (shorter interval)
-        setInterval(() => {
+        setInterval(function() {
             if (appState.initialized && document.visibilityState === 'visible' && !appState.realTimeMode) {
                 refreshData().catch(console.error);
             }
         }, 120000); // 2 minutes
 
         // Initialize app on load
-        window.addEventListener('load', async () => {
+        window.addEventListener('load', function() {
             updateStatus('Loading application...');
             
-            try {
-                const configLoaded = await loadConfiguration();
+            loadConfiguration().then(function(configLoaded) {
                 if (configLoaded) {
                     updateStatus('Ready to initialize! Click the button above.');
                 } else {
                     updateStatus('Please set up your configuration first.');
                 }
-            } catch (error) {
+            }).catch(function(error) {
                 console.error('Error during startup:', error);
                 updateStatus('Error loading configuration. Please set up manually.');
                 showAlert('Could not load saved configuration. Please set up your API keys.', 'error');
-            }
+            });
             
-            setTimeout(() => {
-                console.log(`
-🔧 DEBUGGING TOOLS AVAILABLE:
-═══════════════════════════════════════
-
-Run these commands in the console to debug markers:
-
-📍 debugMarkers()     - Show detailed marker information
-🔄 forceShowMarkers() - Force all markers to be visible  
-🎯 createTestMarker() - Create a test marker manually
-🧪 testWithYourData() - Test with your exact data
-🔍 testSingleAddress() - Test geocoding one address
-
-Example: Type "debugMarkers()" and press Enter to see marker info.
-                `);
+            setTimeout(function() {
+                console.log('\n🔧 DEBUGGING TOOLS AVAILABLE:\n═══════════════════════════════════════\n\nRun these commands in the console to debug markers:\n\n📍 debugMarkers()     - Show detailed marker information\n🔄 forceShowMarkers() - Force all markers to be visible  \n🎯 createTestMarker() - Create a test marker manually\n🧪 testWithYourData() - Test with your exact data\n🔍 testSingleAddress() - Test geocoding one address\n\nExample: Type "debugMarkers()" and press Enter to see marker info.');
             }, 2000);
         });
     </script>
