@@ -659,26 +659,23 @@ Ready to initialize!`, 'success');
 
                 updateStatus('Loading Google Maps JavaScript API...');
                 
-                const testUrl = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&libraries=geometry&callback=__googleMapsCallback`;
+                // Use proper async loading as recommended by Google
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&libraries=geometry,marker&loading=async`;
+                script.async = true;
+                script.defer = true;
                 
-                window.__googleMapsCallback = () => {
+                script.onload = () => {
                     if (window.google && window.google.maps) {
                         updateStatus('Google Maps API loaded successfully ✓');
-                        delete window.__googleMapsCallback;
                         resolve();
                     } else {
                         reject(new Error('Google Maps API failed to initialize properly.'));
                     }
                 };
-
-                const script = document.createElement('script');
-                script.src = testUrl;
-                script.async = true;
-                script.defer = true;
                 
                 script.onerror = (error) => {
                     console.error('Google Maps script error details:', error);
-                    delete window.__googleMapsCallback;
                     
                     const errorMsg = `Google Maps API failed to load. This usually means:
 
@@ -702,7 +699,6 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                 
                 setTimeout(() => {
                     if (!window.google || !window.google.maps) {
-                        delete window.__googleMapsCallback;
                         reject(new Error('Google Maps API loading timed out after 10 seconds. Check your internet connection and API key validity.'));
                     }
                 }, 10000);
@@ -1349,6 +1345,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             console.log('📍 Final position for marker:', position);
 
             try {
+                // Use standard Marker (AdvancedMarkerElement requires more complex setup)
                 const marker = new google.maps.Marker({
                     position: position,
                     map: map,
@@ -1379,19 +1376,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                 console.log('Marker visible check:', marker.getVisible());
 
                 const infoWindow = new google.maps.InfoWindow({
-                    content: `
-                        <div style="padding: 15px; min-width: 250px;">
-                            <h3 style="margin: 0 0 10px 0; color: #333;">🎯 DW Location</h3>
-                            <p><strong>Name:</strong> ${locationData.name}</p>
-                            <p><strong>Address:</strong> ${locationData.address}</p>
-                            <p><strong>Available:</strong> <span style="color: ${isZero ? '#999' : '#4CAF50'}; font-weight: bold;">${locationData.count}</span></p>
-                            <p><strong>Distance:</strong> ${locationData.distance.toFixed(1)} miles</p>
-                            <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(locationData.address)}', '_blank')" 
-                                    style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px;">
-                                🧭 Get Directions
-                            </button>
-                        </div>
-                    `
+                    content: '<div style="padding: 15px; min-width: 250px;"><h3 style="margin: 0 0 10px 0; color: #333;">🎯 DW Location</h3><p><strong>Name:</strong> ' + locationData.name + '</p><p><strong>Address:</strong> ' + locationData.address + '</p><p><strong>Available:</strong> <span style="color: ' + (isZero ? '#999' : '#4CAF50') + '; font-weight: bold;">' + locationData.count + '</span></p><p><strong>Distance:</strong> ' + locationData.distance.toFixed(1) + ' miles</p><button onclick="window.open(\'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(locationData.address) + '\', \'_blank\')" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px;">🧭 Get Directions</button></div>'
                 });
 
                 marker.addListener('click', () => {
