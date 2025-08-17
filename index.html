@@ -961,9 +961,12 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                 return;
             }
 
+            console.log('Initializing Google Maps with user location:', userLocation);
+
             map = new google.maps.Map(document.getElementById('map'), {
                 zoom: 12,
                 center: userLocation,
+                mapTypeId: google.maps.MapTypeId.ROADMAP,
                 styles: [
                     {
                         featureType: 'all',
@@ -978,14 +981,37 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                 ]
             });
 
-            new google.maps.Marker({
+            console.log('Map initialized:', map);
+
+            // Add user location marker
+            const userMarker = new google.maps.Marker({
                 position: userLocation,
                 map: map,
-                title: 'Your Location',
+                title: 'Your Current Location',
                 icon: {
-                    url: 'data:image/svg+xml;charset=UTF-8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 20 20"><circle cx="10" cy="10" r="8" fill="%234285F4" stroke="white" stroke-width="2"/></svg>',
-                    scaledSize: new google.maps.Size(20, 20)
-                }
+                    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                            <circle cx="12" cy="12" r="10" fill="#4285F4" stroke="white" stroke-width="3"/>
+                            <circle cx="12" cy="12" r="4" fill="white"/>
+                        </svg>
+                    `)}`,
+                    scaledSize: new google.maps.Size(24, 24),
+                    anchor: new google.maps.Point(12, 12)
+                },
+                zIndex: 1000
+            });
+
+            console.log('User location marker added:', userMarker);
+
+            // Add click listener to map for debugging
+            map.addListener('click', (event) => {
+                console.log('Map clicked at:', event.latLng.toString());
+            });
+
+            // Log when map is fully loaded
+            google.maps.event.addListenerOnce(map, 'idle', () => {
+                console.log('Map is fully loaded and ready');
+                updateStatus('Map loaded and ready for markers');
             });
         }
 
