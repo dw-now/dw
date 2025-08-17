@@ -297,6 +297,7 @@
         <button class="btn" onclick="initializeApp()" id="initBtn">🚀 Initialize App</button>
         <button class="btn btn-secondary" onclick="generateQR()" id="qrBtn" disabled>📱 Generate QR Code</button>
         <button class="btn btn-secondary" onclick="refreshData()" id="refreshBtn" disabled>🔄 Refresh Data</button>
+        <button class="btn btn-secondary" onclick="toggleRealTimeMode()" id="realTimeBtn" disabled>⏱️ Real-Time Mode: OFF</button>
         <button class="btn btn-danger" onclick="showSetupForm()">⚙️ Update Configuration</button>
     </div>
 
@@ -365,7 +366,11 @@
             sheetId: '',
             range: 'Sheet1!A:C',
             userId: '',
-            initialized: false
+            initialized: false,
+            realTimeMode: false,
+            lastRefresh: null,
+            lastDataHash: null,
+            lastLocationCount: null
         };
 
         // Initialize Supabase
@@ -952,7 +957,39 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
             });
         }
 
-        async function loadSheetsData() {
+        function toggleRealTimeMode() {
+            const realTimeBtn = document.getElementById('realTimeBtn');
+            
+            appState.realTimeMode = !appState.realTimeMode;
+            
+            if (appState.realTimeMode) {
+                realTimeBtn.textContent = '⏱️ Real-Time Mode: ON';
+                realTimeBtn.style.background = 'linear-gradient(45deg, #4CAF50, #45a049)';
+                
+                // Clear existing interval and start faster refresh (every 10 seconds)
+                if (updateInterval) clearInterval(updateInterval);
+                updateInterval = setInterval(() => {
+                    refreshData();
+                }, 10000);
+                
+                showAlert('🚀 Real-Time Mode activated! Data will refresh every 10 seconds. Add new addresses to your Google Sheet and watch them appear!', 'success');
+                
+                // Do an immediate refresh (don't await here)
+                refreshData();
+                
+            } else {
+                realTimeBtn.textContent = '⏱️ Real-Time Mode: OFF';
+                realTimeBtn.style.background = 'linear-gradient(45deg, #2196F3, #1976D2)';
+                
+                // Switch back to normal refresh (every 30 seconds)
+                if (updateInterval) clearInterval(updateInterval);
+                updateInterval = setInterval(() => {
+                    refreshData();
+                }, 30000);
+                
+                showAlert('Real-Time Mode deactivated. Data will refresh every 30 seconds.', 'info');
+            }
+        }
             updateStatus('Loading sheet data...');
             document.getElementById('loadingDiv').style.display = 'block';
 
@@ -1219,7 +1256,16 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                 updateLocationsList();
                 document.getElementById('infoPanel').style.display = 'block';
                 updateStatus(`Found ${sheetsData.length} locations within 3 miles`);
-                showAlert(`🎉 Successfully loaded ${sheetsData.length} locations! Look for yellow circles on the map.`, 'success');
+                
+                // Check if we have new locations compared to last time
+                if (appState.lastLocationCount && sheetsData.length > appState.lastLocationCount) {
+                    const newCount = sheetsData.length - appState.lastLocationCount;
+                    showAlert(`🎉 ${newCount} new location(s) added! Total: ${sheetsData.length} locations`, 'success');
+                } else if (!appState.lastLocationCount) {
+                    showAlert(`🎉 Successfully loaded ${sheetsData.length} locations! Look for yellow circles on the map.`, 'success');
+                }
+                
+                appState.lastLocationCount = sheetsData.length;
                 
                 console.log('📍 All marker positions:');
                 markers.forEach((marker, index) => {
@@ -1411,15 +1457,43 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             }
 
             try {
-                updateStatus('Refreshing data...');
+                // Show visual feedback for refresh
+                const refreshBtn = document.getElementById('refreshBtn');
+                const originalText = refreshBtn.textContent;
+                refreshBtn.textContent = '🔄 Refreshing...';
+                refreshBtn.disabled = true;
+                
+                updateStatus('Refreshing data from Google Sheets...');
+                
                 if (appState.sheetId && appState.sheetId !== 'demo') {
                     await loadSheetsData();
                 } else {
                     await loadDemoData();
                 }
-                showAlert('Data refreshed successfully!', 'success');
+                
+                // Update status with last refresh time
+                const now = new Date();
+                const timeString = now.toLocaleTimeString();
+                
+                if (appState.realTimeMode) {
+                    updateStatus(`✅ Real-time monitoring active - Last updated: ${timeString}`);
+                } else {
+                    updateStatus(`✅ Data refreshed at ${timeString}`);
+                    showAlert('Data refreshed successfully!', 'success');
+                }
+                
+                // Restore button
+                refreshBtn.textContent = originalText;
+                refreshBtn.disabled = false;
+                
             } catch (error) {
+                updateStatus('❌ Refresh failed');
                 showAlert('Failed to refresh data: ' + error.message, 'error');
+                
+                // Restore button even on error
+                const refreshBtn = document.getElementById('refreshBtn');
+                refreshBtn.textContent = '🔄 Refresh Data';
+                refreshBtn.disabled = false;
             }
         }
 
@@ -1642,12 +1716,12 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             }
         };
 
-        // Auto-refresh every 5 minutes when active
+        // Auto-refresh every 2 minutes when active (shorter interval)
         setInterval(() => {
-            if (appState.initialized && document.visibilityState === 'visible') {
-                refreshData();
+            if (appState.initialized && document.visibilityState === 'visible' && !appState.realTimeMode) {
+                refreshData().catch(console.error);
             }
-        }, 300000);
+        }, 120000); // 2 minutes
 
         // Initialize app on load
         window.addEventListener('load', async () => {
