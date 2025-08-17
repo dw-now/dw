@@ -1193,7 +1193,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                     
                     try {
                         const location = await geocodeAddress(geocoder, address);
-                        console.log(`Geocoded ${address} to:`, location);
+                        console.log(`Geocoded ${address} to:`, location.lat(), location.lng());
                         
                         let distance = 0;
                         if (appState.apiKey !== 'DEMO_MODE') {
@@ -1216,9 +1216,13 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                                 distance
                             };
 
-                            console.log('Adding location:', locationData);
+                            console.log('Adding location to map:', locationData);
                             sheetsData.push(locationData);
-                            createMarker(locationData);
+                            
+                            // Create marker immediately
+                            const marker = createMarker(locationData);
+                            console.log('Marker created and should be visible on map');
+                            
                             successCount++;
                             
                             if (appState.apiKey !== 'DEMO_MODE') {
@@ -1240,20 +1244,42 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             }
 
             console.log(`Final results: ${successCount} locations added out of ${processedCount} processed`);
+            console.log('Total markers on map:', markers.length);
 
             if (sheetsData.length > 0) {
                 if (appState.apiKey !== 'DEMO_MODE') {
+                    // Extend bounds to include user location
                     bounds.extend(new google.maps.LatLng(userLocation.lat, userLocation.lng));
+                    
+                    // Fit map to show all markers
+                    console.log('Fitting map bounds to show all markers');
                     map.fitBounds(bounds);
+                    
+                    // Add some padding
+                    setTimeout(() => {
+                        if (map.getZoom() > 15) {
+                            map.setZoom(15);
+                        }
+                    }, 1000);
                 }
+                
                 updateLocationsList();
                 document.getElementById('infoPanel').style.display = 'block';
                 updateStatus(`Found ${sheetsData.length} locations within 3 miles`);
-                showAlert(`Successfully loaded ${sheetsData.length} locations from your data!`, 'success');
+                showAlert(`Successfully loaded ${sheetsData.length} locations! Look for yellow circles on the map.`, 'success');
+                
+                // Log marker positions for debugging
+                console.log('All marker positions:');
+                markers.forEach((marker, index) => {
+                    if (marker.locationData) {
+                        console.log(`Marker ${index}: ${marker.locationData.name} at ${marker.getPosition().lat()}, ${marker.getPosition().lng()}`);
+                    }
+                });
+                
             } else {
                 updateStatus('No locations found within 3 miles');
                 document.getElementById('infoPanel').style.display = 'none';
-                showAlert('No locations found within 3 miles of your current location. Check your data or expand the search radius.', 'info');
+                showAlert('No locations found within 3 miles of your current location. Check your data or try a larger search radius.', 'info');
                 
                 // Show what data was processed for debugging
                 console.log('Processed data summary:', {
