@@ -421,6 +421,19 @@
                 return;
             }
 
+            // Validate Sheet ID format if provided
+            if (sheetId && sheetId !== 'demo') {
+                const sheetIdPattern = /^[a-zA-Z0-9-_]{20,}$/;
+                if (!sheetIdPattern.test(sheetId)) {
+                    showAlert('Google Sheets ID format appears incorrect. It should be a long string from the URL like: 1ABC...XYZ', 'error');
+                    return;
+                }
+                
+                // Show the expected URL format
+                const sampleUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
+                console.log('Your Google Sheet URL should be:', sampleUrl);
+            }
+
             const config = {
                 user_id: userId,
                 google_maps_api_key: apiKey,
@@ -439,15 +452,18 @@
                             onConflict: 'user_id' 
                         });
 
-                    if (error) throw error;
+                    if (error) {
+                        console.error('Supabase error:', error);
+                        throw error;
+                    }
                     
-                    showAlert('Configuration saved successfully!', 'success');
+                    showAlert('Configuration saved successfully to Supabase!', 'success');
                 } else {
                     // Store in localStorage as fallback
                     Object.keys(config).forEach(key => {
                         localStorage.setItem(key, config[key]);
                     });
-                    showAlert('Configuration saved locally (Supabase not configured)', 'success');
+                    showAlert('Configuration saved locally (Supabase connection failed)', 'info');
                 }
 
                 // Update app state
@@ -458,6 +474,19 @@
 
                 hideSetupForm();
                 updateStatus('Configuration saved! Ready to initialize.');
+                
+                // Show helpful info about the Google Sheet
+                if (sheetId && sheetId !== 'demo') {
+                    showAlert(`Configuration saved! 
+
+📊 Google Sheet Setup:
+• Sheet ID: ${sheetId}
+• Expected URL: https://docs.google.com/spreadsheets/d/${sheetId}/edit
+• Required format: Column A (Name), Column B (Address), Column C (Count)
+• Sharing: Must be "Anyone with the link can view"
+
+Ready to initialize!`, 'success');
+                }
                 
             } catch (error) {
                 console.error('Error saving configuration:', error);
@@ -722,23 +751,100 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
             window.google = {
                 maps: {
                     Map: function(element, options) {
+                        // Create a more interactive demo map
                         element.innerHTML = `
-                            <div style="display: flex; align-items: center; justify-content: center; height: 100%; background: linear-gradient(45deg, #e3f2fd, #bbdefb); color: #1976d2; font-size: 16px; text-align: center; padding: 20px;">
-                                <div>
-                                    <h3>🗺️ Demo Mode Active</h3>
-                                    <p>This is a demonstration of the interface.</p>
-                                    <p>To see real maps, please provide a valid Google Maps API key.</p>
-                                    <div style="margin-top: 20px; font-size: 14px; opacity: 0.8;">
-                                        Demo locations and functionality are shown below.
-                                    </div>
+                            <div id="demoMapContainer" style="position: relative; height: 100%; background: linear-gradient(45deg, #e3f2fd, #bbdefb); overflow: hidden;">
+                                <div style="position: absolute; top: 20px; left: 20px; right: 20px; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 8px; font-size: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+                                    <h3 style="margin: 0 0 10px 0; color: #1976d2;">🗺️ Demo Mode - Interactive Map Preview</h3>
+                                    <p style="margin: 0; color: #666;">This shows how your locations will appear on Google Maps. Markers will be added here as locations are processed.</p>
+                                </div>
+                                <div id="demoMarkers" style="position: absolute; top: 80px; left: 20px; right: 20px; bottom: 20px; padding: 20px;">
+                                    <!-- Markers will be added here -->
                                 </div>
                             </div>
                         `;
+                        
+                        this.element = element;
+                        this.markers = [];
                         return this;
                     },
-                    Marker: function() { return { addListener: () => {}, setMap: () => {} }; },
-                    InfoWindow: function() { return { open: () => {}, setContent: () => {} }; },
-                    LatLng: function(lat, lng) { return { lat: () => lat, lng: () => lng }; },
+                    Marker: function(options) {
+                        this.options = options;
+                        this.infoWindow = null;
+                        
+                        // Add visual marker to demo map
+                        if (options.map && options.map.element) {
+                            this.addToMap();
+                        }
+                        
+                        this.addListener = (event, callback) => {
+                            if (event === 'click') {
+                                this.clickCallback = callback;
+                            }
+                        };
+                        
+                        this.setMap = (map) => {
+                            if (!map) {
+                                // Remove marker
+                                if (this.markerElement) {
+                                    this.markerElement.remove();
+                                }
+                            }
+                        };
+                        
+                        return this;
+                    },
+                    InfoWindow: function(options) {
+                        this.content = options?.content || '';
+                        this.open = (map, marker) => {
+                            // Show info in demo
+                            if (marker && marker.markerElement) {
+                                const existing = document.querySelector('.demo-info-window');
+                                if (existing) existing.remove();
+                                
+                                const infoDiv = document.createElement('div');
+                                infoDiv.className = 'demo-info-window';
+                                infoDiv.style.cssText = `
+                                    position: absolute;
+                                    background: white;
+                                    padding: 10px;
+                                    border-radius: 8px;
+                                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+                                    max-width: 250px;
+                                    font-size: 12px;
+                                    z-index: 1000;
+                                    transform: translate(-50%, -100%);
+                                    margin-top: -10px;
+                                `;
+                                infoDiv.innerHTML = this.content;
+                                
+                                const rect = marker.markerElement.getBoundingClientRect();
+                                const containerRect = marker.markerElement.offsetParent.getBoundingClientRect();
+                                
+                                infoDiv.style.left = (rect.left - containerRect.left + rect.width/2) + 'px';
+                                infoDiv.style.top = (rect.top - containerRect.top) + 'px';
+                                
+                                marker.markerElement.offsetParent.appendChild(infoDiv);
+                                
+                                // Auto-close after 5 seconds
+                                setTimeout(() => {
+                                    if (infoDiv.parentNode) infoDiv.remove();
+                                }, 5000);
+                            }
+                        };
+                        this.setContent = (content) => {
+                            this.content = content;
+                        };
+                        return this;
+                    },
+                    LatLng: function(lat, lng) { 
+                        return { 
+                            lat: () => lat, 
+                            lng: () => lng,
+                            lat: lat,
+                            lng: lng
+                        }; 
+                    },
                     LatLngBounds: function() { 
                         return { 
                             extend: () => {},
@@ -768,6 +874,54 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                     },
                     Size: function(w, h) { return { width: w, height: h }; }
                 }
+            };
+            
+            // Add method to Marker prototype for demo visualization
+            window.google.maps.Marker.prototype.addToMap = function() {
+                const markersContainer = document.getElementById('demoMarkers');
+                if (!markersContainer) return;
+                
+                const isZero = this.options.title?.includes('0');
+                const count = this.options.title?.match(/\d+/)?.[0] || '?';
+                const iconColor = isZero ? '#999999' : '#FFD700';
+                
+                this.markerElement = document.createElement('div');
+                this.markerElement.style.cssText = `
+                    position: relative;
+                    display: inline-flex;
+                    align-items: center;
+                    background: ${iconColor};
+                    color: black;
+                    padding: 8px 12px;
+                    border-radius: 20px;
+                    margin: 5px;
+                    cursor: pointer;
+                    font-weight: bold;
+                    font-size: 12px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+                    border: 2px solid white;
+                    transition: transform 0.2s ease;
+                `;
+                
+                this.markerElement.innerHTML = `
+                    📍 ${this.options.title || 'DW Location'}
+                `;
+                
+                this.markerElement.addEventListener('mouseover', () => {
+                    this.markerElement.style.transform = 'scale(1.1)';
+                });
+                
+                this.markerElement.addEventListener('mouseout', () => {
+                    this.markerElement.style.transform = 'scale(1)';
+                });
+                
+                this.markerElement.addEventListener('click', () => {
+                    if (this.clickCallback) {
+                        this.clickCallback();
+                    }
+                });
+                
+                markersContainer.appendChild(this.markerElement);
             };
         }
 
@@ -840,36 +994,94 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
             document.getElementById('loadingDiv').style.display = 'block';
 
             try {
-                const csvUrl = `https://docs.google.com/spreadsheets/d/${appState.sheetId}/export?format=csv&gid=0`;
+                if (!appState.sheetId || appState.sheetId === 'demo') {
+                    console.log('No sheet ID provided, using demo data');
+                    await loadDemoData();
+                    document.getElementById('loadingDiv').style.display = 'none';
+                    return;
+                }
+
+                // Try multiple methods to get Google Sheets data
+                let data = null;
                 
-                let data;
+                // Method 1: CSV export (most reliable)
+                const csvUrl = `https://docs.google.com/spreadsheets/d/${appState.sheetId}/export?format=csv&gid=0`;
+                console.log('Attempting to fetch from:', csvUrl);
+                
                 try {
-                    const response = await fetch(csvUrl);
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}: Make sure your Google Sheet is publicly viewable`);
+                    updateStatus('Connecting to Google Sheets (CSV)...');
+                    const response = await fetch(csvUrl, {
+                        method: 'GET',
+                        mode: 'cors',
+                        headers: {
+                            'Content-Type': 'text/csv',
+                        }
+                    });
+                    
+                    console.log('CSV Response status:', response.status);
+                    
+                    if (response.ok) {
+                        const csvText = await response.text();
+                        console.log('CSV data received:', csvText.substring(0, 200) + '...');
+                        
+                        if (csvText.trim()) {
+                            data = parseCSV(csvText);
+                            console.log('Parsed CSV data:', data);
+                            showAlert('Successfully loaded data from Google Sheets!', 'success');
+                        }
+                    } else {
+                        throw new Error(`HTTP ${response.status}: Sheet may not be publicly accessible`);
                     }
+                } catch (csvError) {
+                    console.warn('CSV method failed:', csvError);
                     
-                    const csvText = await response.text();
-                    data = parseCSV(csvText);
-                    
-                    if (data.length === 0) {
-                        throw new Error('No data found in the sheet');
+                    // Method 2: Try public sharing URL
+                    try {
+                        updateStatus('Trying alternate Google Sheets access...');
+                        const publicUrl = `https://docs.google.com/spreadsheets/d/${appState.sheetId}/gviz/tq?tqx=out:csv&sheet=Sheet1`;
+                        console.log('Trying public URL:', publicUrl);
+                        
+                        const altResponse = await fetch(publicUrl);
+                        if (altResponse.ok) {
+                            const altCsvText = await altResponse.text();
+                            data = parseCSV(altCsvText);
+                            showAlert('Successfully loaded data using alternate method!', 'success');
+                        }
+                    } catch (altError) {
+                        console.warn('Alternate method failed:', altError);
                     }
+                }
+                
+                // If all methods failed, show detailed error and use demo data
+                if (!data || data.length === 0) {
+                    const errorMsg = `Could not load Google Sheets data. Using demo data instead.
+
+📋 Troubleshooting Steps:
+1. Make sure your Google Sheet is publicly viewable
+2. Check that the Sheet ID is correct: ${appState.sheetId}
+3. Verify your sheet has data in columns A, B, C
+4. Try sharing with "Anyone with the link can view"
+
+Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                     
-                    showAlert('Successfully loaded data from Google Sheets!', 'success');
+                    showAlert(errorMsg, 'error');
+                    console.error('All Google Sheets methods failed, using demo data');
                     
-                } catch (fetchError) {
-                    console.warn('Failed to fetch from Google Sheets, using demo data:', fetchError);
-                    showAlert('Could not load your Google Sheet. Using demo data instead.', 'info');
+                    // Use demo data as fallback
                     data = getDemoData();
+                    showAlert('Using demo data. Please check your Google Sheets configuration.', 'info');
                 }
 
                 await processLocationsData(data);
                 document.getElementById('loadingDiv').style.display = 'none';
                 
             } catch (error) {
+                console.error('Error in loadSheetsData:', error);
                 document.getElementById('loadingDiv').style.display = 'none';
-                throw error;
+                
+                // Always fallback to demo data
+                showAlert('Google Sheets error: ' + error.message + '. Using demo data.', 'error');
+                await loadDemoData();
             }
         }
 
@@ -889,9 +1101,18 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
         }
 
         function parseCSV(csvText) {
+            console.log('Parsing CSV text:', csvText.substring(0, 300) + '...');
+            
+            if (!csvText || csvText.trim() === '') {
+                console.error('Empty CSV text provided');
+                return [];
+            }
+            
             const lines = csvText.trim().split('\n');
-            return lines.map(line => {
-                const result = [];
+            console.log(`Found ${lines.length} lines in CSV`);
+            
+            const result = lines.map((line, index) => {
+                const row = [];
                 let current = '';
                 let inQuotes = false;
                 
@@ -900,36 +1121,67 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                     if (char === '"') {
                         inQuotes = !inQuotes;
                     } else if (char === ',' && !inQuotes) {
-                        result.push(current.trim());
+                        row.push(current.trim().replace(/^"|"$/g, '')); // Remove surrounding quotes
                         current = '';
                     } else {
                         current += char;
                     }
                 }
-                result.push(current.trim());
-                return result;
+                row.push(current.trim().replace(/^"|"$/g, ''));
+                
+                console.log(`Parsed line ${index}:`, row);
+                return row;
             });
+            
+            console.log('Final parsed result:', result);
+            return result;
         }
 
         async function processLocationsData(data) {
+            console.log('Processing locations data:', data);
             sheetsData = [];
             clearMarkers();
 
+            if (!data || data.length === 0) {
+                console.error('No data provided to processLocationsData');
+                updateStatus('No location data found');
+                return;
+            }
+
             const geocoder = new google.maps.Geocoder();
             const bounds = new google.maps.LatLngBounds();
+            let processedCount = 0;
+            let successCount = 0;
 
-            for (const row of data) {
-                if (row.length >= 3) {
+            updateStatus(`Processing ${data.length} locations...`);
+
+            for (let i = 0; i < data.length; i++) {
+                const row = data[i];
+                console.log(`Processing row ${i}:`, row);
+                
+                if (row.length >= 3 && row[0] && row[1] && row[2] !== undefined) {
                     const [name, address, count] = row;
+                    processedCount++;
+                    
+                    console.log(`Geocoding: ${name} at ${address} (count: ${count})`);
                     
                     try {
                         const location = await geocodeAddress(geocoder, address);
-                        const distance = google.maps.geometry.spherical.computeDistanceBetween(
-                            new google.maps.LatLng(userLocation.lat, userLocation.lng),
-                            location
-                        ) / 1609.34;
+                        console.log(`Geocoded ${address} to:`, location);
+                        
+                        let distance = 0;
+                        if (appState.apiKey !== 'DEMO_MODE') {
+                            distance = google.maps.geometry.spherical.computeDistanceBetween(
+                                new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                                location
+                            ) / 1609.34; // Convert to miles
+                        } else {
+                            distance = Math.random() * 3; // Random distance for demo
+                        }
+                        
+                        console.log(`Distance from user: ${distance.toFixed(2)} miles`);
 
-                        if (distance <= 3) {
+                        if (distance <= 3) { // Within 3 miles
                             const locationData = {
                                 name,
                                 address,
@@ -938,17 +1190,30 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                                 distance
                             };
 
+                            console.log('Adding location:', locationData);
                             sheetsData.push(locationData);
                             createMarker(locationData);
+                            successCount++;
+                            
                             if (appState.apiKey !== 'DEMO_MODE') {
                                 bounds.extend(location);
                             }
+                        } else {
+                            console.log(`Location ${name} is too far (${distance.toFixed(2)} miles)`);
                         }
                     } catch (error) {
                         console.error(`Failed to geocode ${address}:`, error);
+                        updateStatus(`Geocoding error for ${address}: ${error.message}`);
                     }
+                } else {
+                    console.warn(`Skipping invalid row ${i}:`, row);
                 }
+                
+                // Update status during processing
+                updateStatus(`Processed ${i + 1}/${data.length} locations...`);
             }
+
+            console.log(`Final results: ${successCount} locations added out of ${processedCount} processed`);
 
             if (sheetsData.length > 0) {
                 if (appState.apiKey !== 'DEMO_MODE') {
@@ -957,9 +1222,21 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                 }
                 updateLocationsList();
                 document.getElementById('infoPanel').style.display = 'block';
+                updateStatus(`Found ${sheetsData.length} locations within 3 miles`);
+                showAlert(`Successfully loaded ${sheetsData.length} locations from your data!`, 'success');
+            } else {
+                updateStatus('No locations found within 3 miles');
+                document.getElementById('infoPanel').style.display = 'none';
+                showAlert('No locations found within 3 miles of your current location. Check your data or expand the search radius.', 'info');
+                
+                // Show what data was processed for debugging
+                console.log('Processed data summary:', {
+                    totalRows: data.length,
+                    processedRows: processedCount,
+                    userLocation: userLocation,
+                    sampleData: data.slice(0, 3)
+                });
             }
-
-            updateStatus(`Found ${sheetsData.length} locations within 3 miles`);
         }
 
         function geocodeAddress(geocoder, address) {
