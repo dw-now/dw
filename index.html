@@ -1174,26 +1174,52 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                 return;
             }
 
+            // Skip header row if it exists
+            let startIndex = 0;
+            if (data.length > 0) {
+                const firstRow = data[0];
+                if (firstRow.some(cell => 
+                    cell && typeof cell === 'string' && 
+                    (cell.toLowerCase().includes('name') || 
+                     cell.toLowerCase().includes('address') || 
+                     cell.toLowerCase().includes('count') ||
+                     cell.toLowerCase().includes('location'))
+                )) {
+                    console.log('Detected header row, skipping:', firstRow);
+                    startIndex = 1;
+                }
+            }
+
             const geocoder = new google.maps.Geocoder();
             const bounds = new google.maps.LatLngBounds();
             let processedCount = 0;
             let successCount = 0;
 
-            updateStatus(`Processing ${data.length} locations...`);
+            updateStatus(`Processing ${data.length - startIndex} locations...`);
 
-            for (let i = 0; i < data.length; i++) {
+            for (let i = startIndex; i < data.length; i++) {
                 const row = data[i];
                 console.log(`Processing row ${i}:`, row);
                 
                 if (row.length >= 3 && row[0] && row[1] && row[2] !== undefined) {
-                    const [name, address, count] = row;
-                    processedCount++;
+                    const [name, address, count] = row.map(cell => cell ? cell.toString().trim() : '');
                     
-                    console.log(`Geocoding: ${name} at ${address} (count: ${count})`);
+                    // Skip if address looks like a header or is too short
+                    if (!address || 
+                        address.toLowerCase() === 'address' ||
+                        address.length < 5 ||
+                        address.toLowerCase().includes('column') ||
+                        address.toLowerCase().includes('header')) {
+                        console.log(`Skipping invalid address: "${address}"`);
+                        continue;
+                    }
+                    
+                    processedCount++;
+                    console.log(`🔍 Geocoding: "${name}" at "${address}" (count: ${count})`);
                     
                     try {
                         const location = await geocodeAddress(geocoder, address);
-                        console.log(`Geocoded ${address} to:`, location.lat(), location.lng());
+                        console.log(`✅ Geocoded "${address}" to:`, location.lat(), location.lng());
                         
                         let distance = 0;
                         if (appState.apiKey !== 'DEMO_MODE') {
@@ -1205,46 +1231,93 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                             distance = Math.random() * 3; // Random distance for demo
                         }
                         
-                        console.log(`Distance from user: ${distance.toFixed(2)} miles`);
+                        console.log(`📏 Distance from user: ${distance.toFixed(2)} miles`);
 
                         if (distance <= 3) { // Within 3 miles
                             const locationData = {
-                                name,
+                                name: name || `Location ${successCount + 1}`,
                                 address,
                                 count: parseInt(count) || 0,
                                 position: location,
                                 distance
                             };
 
-                            console.log('Adding location to map:', locationData);
+                            console.log('📍 Adding location to map:', locationData);
                             sheetsData.push(locationData);
                             
                             // Create marker immediately
                             const marker = createMarker(locationData);
-                            console.log('Marker created and should be visible on map');
-                            
-                            successCount++;
+                            if (marker) {
+                                console.log('✅ Marker created and should be visible on map');
+                                successCount++;
+                            } else {
+                                console.log('❌ Failed to create marker');
+                            }
                             
                             if (appState.apiKey !== 'DEMO_MODE') {
                                 bounds.extend(location);
                             }
                         } else {
-                            console.log(`Location ${name} is too far (${distance.toFixed(2)} miles)`);
+                            console.log(`📍 Location "${name}" is too far (${distance.toFixed(2)} miles)`);
                         }
                     } catch (error) {
-                        console.error(`Failed to geocode ${address}:`, error);
-                        updateStatus(`Geocoding error for ${address}: ${error.message}`);
+                        console.error(`❌ Failed to geocode "${address}":`, error.message);
+                        
+                        // Try to improve the address and retry once
+                        const improvedAddress = improveAddress(address);
+                        if (improvedAddress !== address) {
+                            console.log(`🔄 Retrying with improved address: "${improvedAddress}"`);
+                            try {
+                                const location = await geocodeAddress(geocoder, improvedAddress);
+                                console.log(`✅ Retry successful for "${improvedAddress}"`);
+                                
+                                // Process successful retry (same as above)
+                                let distance = 0;
+                                if (appState.apiKey !== 'DEMO_MODE') {
+                                    distance = google.maps.geometry.spherical.computeDistanceBetween(
+                                        new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                                        location
+                                    ) / 1609.34;
+                                } else {
+                                    distance = Math.random() * 3;
+                                }
+                                
+                                if (distance <= 3) {
+                                    const locationData = {
+                                        name: name || `Location ${successCount + 1}`,
+                                        address: improvedAddress,
+                                        count: parseInt(count) || 0,
+                                        position: location,
+                                        distance
+                                    };
+
+                                    sheetsData.push(locationData);
+                                    const marker = createMarker(locationData);
+                                    if (marker) {
+                                        successCount++;
+                                        if (appState.apiKey !== 'DEMO_MODE') {
+                                            bounds.extend(location);
+                                        }
+                                    }
+                                }
+                            } catch (retryError) {
+                                console.error(`❌ Retry also failed for "${improvedAddress}":`, retryError.message);
+                                updateStatus(`Could not find address: "${address}"`);
+                            }
+                        } else {
+                            updateStatus(`Geocoding error for: "${address}"`);
+                        }
                     }
                 } else {
-                    console.warn(`Skipping invalid row ${i}:`, row);
+                    console.warn(`⚠️ Skipping invalid row ${i}:`, row);
                 }
                 
                 // Update status during processing
-                updateStatus(`Processed ${i + 1}/${data.length} locations...`);
+                updateStatus(`Processed ${i + 1 - startIndex}/${data.length - startIndex} locations...`);
             }
 
-            console.log(`Final results: ${successCount} locations added out of ${processedCount} processed`);
-            console.log('Total markers on map:', markers.length);
+            console.log(`🎯 Final results: ${successCount} markers created out of ${processedCount} addresses processed`);
+            console.log('📍 Total markers on map:', markers.length);
 
             if (sheetsData.length > 0) {
                 if (appState.apiKey !== 'DEMO_MODE') {
@@ -1252,10 +1325,10 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                     bounds.extend(new google.maps.LatLng(userLocation.lat, userLocation.lng));
                     
                     // Fit map to show all markers
-                    console.log('Fitting map bounds to show all markers');
+                    console.log('🗺️ Fitting map bounds to show all markers');
                     map.fitBounds(bounds);
                     
-                    // Add some padding
+                    // Add some padding and limit zoom
                     setTimeout(() => {
                         if (map.getZoom() > 15) {
                             map.setZoom(15);
@@ -1266,10 +1339,10 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                 updateLocationsList();
                 document.getElementById('infoPanel').style.display = 'block';
                 updateStatus(`Found ${sheetsData.length} locations within 3 miles`);
-                showAlert(`Successfully loaded ${sheetsData.length} locations! Look for yellow circles on the map.`, 'success');
+                showAlert(`🎉 Successfully loaded ${sheetsData.length} locations! Look for yellow circles on the map.`, 'success');
                 
                 // Log marker positions for debugging
-                console.log('All marker positions:');
+                console.log('📍 All marker positions:');
                 markers.forEach((marker, index) => {
                     if (marker.locationData) {
                         console.log(`Marker ${index}: ${marker.locationData.name} at ${marker.getPosition().lat()}, ${marker.getPosition().lng()}`);
@@ -1277,18 +1350,50 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                 });
                 
             } else {
-                updateStatus('No locations found within 3 miles');
+                updateStatus('No valid locations found');
                 document.getElementById('infoPanel').style.display = 'none';
-                showAlert('No locations found within 3 miles of your current location. Check your data or try a larger search radius.', 'info');
+                
+                if (processedCount === 0) {
+                    showAlert('❌ No valid addresses found in your Google Sheet. Please check your data format:\n\nExpected format:\nColumn A: Location Name\nColumn B: Complete Address (e.g., "123 Main St, Los Angeles, CA")\nColumn C: Count Number', 'error');
+                } else {
+                    showAlert(`⚠️ Found ${processedCount} addresses but none were within 3 miles of your location or could be geocoded. Check your addresses and try again.`, 'info');
+                }
                 
                 // Show what data was processed for debugging
-                console.log('Processed data summary:', {
+                console.log('📊 Processed data summary:', {
                     totalRows: data.length,
+                    skippedHeaderRows: startIndex,
                     processedRows: processedCount,
+                    successfulMarkers: successCount,
                     userLocation: userLocation,
-                    sampleData: data.slice(0, 3)
+                    sampleData: data.slice(0, Math.min(5, data.length))
                 });
             }
+        }
+
+        function improveAddress(address) {
+            if (!address) return address;
+            
+            // Add common improvements
+            let improved = address.trim();
+            
+            // If no state/country, add CA (since user location seems to be California)
+            if (!improved.match(/,\s*(CA|California|USA|United States)/i)) {
+                // If it has a city but no state
+                if (improved.match(/,\s*[A-Za-z\s]+$/)) {
+                    improved += ', CA';
+                } else if (!improved.includes(',')) {
+                    // If it's just a street address, add a common city/state
+                    improved += ', Los Angeles, CA';
+                }
+            }
+            
+            // Add country if missing
+            if (!improved.match(/,\s*(USA|United States)/i) && !improved.endsWith(', CA')) {
+                improved += ', USA';
+            }
+            
+            return improved;
         }
 
         function geocodeAddress(geocoder, address) {
