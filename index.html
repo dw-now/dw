@@ -1483,12 +1483,91 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             }
         });
 
-        // Auto-refresh every 5 minutes when active
-        setInterval(() => {
-            if (appState.initialized && document.visibilityState === 'visible') {
-                refreshData();
-            }
-        }, 300000); // 5 minutes
+        // Add debugging tools
+        window.debugMarkers = function() {
+            console.log('=== MARKER DEBUG INFO ===');
+            console.log('Total markers array length:', markers.length);
+            console.log('Map object:', map);
+            console.log('User location:', userLocation);
+            console.log('App state:', appState);
+            
+            markers.forEach((marker, index) => {
+                console.log(`Marker ${index}:`, {
+                    position: marker.getPosition() ? {
+                        lat: marker.getPosition().lat(),
+                        lng: marker.getPosition().lng()
+                    } : 'No position',
+                    map: marker.getMap() ? 'Has map' : 'NO MAP',
+                    visible: marker.getVisible ? marker.getVisible() : 'Unknown',
+                    title: marker.getTitle(),
+                    icon: marker.getIcon()
+                });
+            });
+            
+            // Test creating a simple marker manually
+            console.log('Testing manual marker creation...');
+            const testMarker = new google.maps.Marker({
+                position: {lat: userLocation.lat + 0.01, lng: userLocation.lng + 0.01},
+                map: map,
+                title: 'TEST MARKER',
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    fillColor: '#FF0000',
+                    fillOpacity: 1,
+                    strokeColor: '#FFFFFF',
+                    strokeWeight: 2,
+                    scale: 10
+                }
+            });
+            console.log('Test marker created:', testMarker);
+            
+            return {
+                totalMarkers: markers.length,
+                mapExists: !!map,
+                userLocation: userLocation,
+                testMarker: testMarker
+            };
+        };
+
+        // Add to window for easy console access
+        window.forceShowMarkers = function() {
+            console.log('Forcing all markers to be visible...');
+            markers.forEach((marker, index) => {
+                marker.setMap(map);
+                marker.setVisible(true);
+                console.log(`Marker ${index} forced visible`);
+            });
+        };
+
+        window.createTestMarker = function(lat, lng, color = '#FFD700') {
+            const testPos = lat && lng ? {lat, lng} : {
+                lat: userLocation.lat + (Math.random() - 0.5) * 0.01,
+                lng: userLocation.lng + (Math.random() - 0.5) * 0.01
+            };
+            
+            const marker = new google.maps.Marker({
+                position: testPos,
+                map: map,
+                title: 'Manual Test Marker',
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    fillColor: color,
+                    fillOpacity: 1,
+                    strokeColor: '#FFFFFF',
+                    strokeWeight: 3,
+                    scale: 15
+                },
+                label: {
+                    text: '99',
+                    color: '#000000',
+                    fontSize: '12px',
+                    fontWeight: 'bold'
+                }
+            });
+            
+            console.log('Test marker created at:', testPos);
+            return marker;
+        };
     </script>
 </body>
 </html>
