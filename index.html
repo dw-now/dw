@@ -1186,50 +1186,54 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                     console.log(`🔍 Geocoding: "${name}" at "${address}" (count: ${count})`);
                     
                     try {
-                        const location = await geocodeAddress(geocoder, address);
-                        console.log(`✅ Geocoded "${address}" to:`, location.lat(), location.lng());
-                        
-                        let distance = 0;
-                        if (appState.apiKey !== 'DEMO_MODE') {
-                            distance = google.maps.geometry.spherical.computeDistanceBetween(
-                                new google.maps.LatLng(userLocation.lat, userLocation.lng),
-                                location
-                            ) / 1609.34;
-                        } else {
-                            distance = Math.random() * 3;
-                        }
-                        
-                        console.log(`📏 Distance from user: ${distance.toFixed(2)} miles`);
-
-                        if (distance <= 3) {
-                            const locationData = {
-                                name: name || `Location ${successCount + 1}`,
-                                address,
-                                count: parseInt(count) || 0,
-                                position: location,
-                                distance
-                            };
-
-                            console.log('📍 Adding location to map:', locationData);
-                            sheetsData.push(locationData);
+                        geocodeAddress(geocoder, address).then(function(location) {
+                            console.log('✅ Geocoded "' + address + '" to:', location.lat(), location.lng());
                             
-                            const marker = createMarker(locationData);
-                            if (marker) {
-                                console.log('✅ Marker created and should be visible on map');
-                                successCount++;
-                            } else {
-                                console.log('❌ Failed to create marker');
-                            }
-                            
+                            let distance = 0;
                             if (appState.apiKey !== 'DEMO_MODE') {
-                                bounds.extend(location);
+                                distance = google.maps.geometry.spherical.computeDistanceBetween(
+                                    new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                                    location
+                                ) / 1609.34;
+                            } else {
+                                distance = Math.random() * 3;
                             }
-                        } else {
-                            console.log(`📍 Location "${name}" is too far (${distance.toFixed(2)} miles)`);
-                        }
+                            
+                            console.log('📏 Distance from user: ' + distance.toFixed(2) + ' miles');
+
+                            if (distance <= 3) {
+                                const locationData = {
+                                    name: name || 'Location ' + (successCount + 1),
+                                    address,
+                                    count: parseInt(count) || 0,
+                                    position: location,
+                                    distance
+                                };
+
+                                console.log('📍 Adding location to map:', locationData);
+                                sheetsData.push(locationData);
+                                
+                                const marker = createMarker(locationData);
+                                if (marker) {
+                                    console.log('✅ Marker created and should be visible on map');
+                                    successCount++;
+                                } else {
+                                    console.log('❌ Failed to create marker');
+                                }
+                                
+                                if (appState.apiKey !== 'DEMO_MODE') {
+                                    bounds.extend(location);
+                                }
+                            } else {
+                                console.log('📍 Location "' + name + '" is too far (' + distance.toFixed(2) + ' miles)');
+                            }
+                        }).catch(function(error) {
+                            console.error('❌ Failed to geocode "' + address + '":', error.message);
+                            updateStatus('Could not find address: "' + address + '"');
+                        });
                     } catch (error) {
-                        console.error(`❌ Failed to geocode "${address}":`, error.message);
-                        updateStatus(`Could not find address: "${address}"`);
+                        console.error('❌ Failed to geocode "' + address + '":', error.message);
+                        updateStatus('Could not find address: "' + address + '"');
                     }
                 } else {
                     console.warn(`⚠️ Skipping invalid row ${i}:`, row);
