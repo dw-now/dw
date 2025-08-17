@@ -388,7 +388,7 @@
             alertDiv.style.display = 'block';
             alertDiv.className = `alert ${type}`;
             
-            setTimeout(() => {
+            setTimeout(function() {
                 alertDiv.style.display = 'none';
             }, 5000);
         }
@@ -627,16 +627,16 @@ Ready to initialize!`, 'success');
                             google_sheets_id: 'demo',
                             sheet_range: 'Sheet1!A:C'
                         }, { onConflict: 'user_id' })
-                        .then(() => {
+                        .then(function() {
                             console.log('Demo config saved to Supabase');
                         })
                         .catch(console.error);
                 }
                 
                 updateStatus('Switching to demo mode...');
-                initializeApp().then(() => {
+                initializeApp().then(function() {
                     showAlert('Demo mode activated! You can now test the interface. Set up your Google Maps API key later for full functionality.', 'success');
-                }).catch(error => {
+                }).catch(function(error) {
                     showAlert('Failed to switch to demo mode: ' + error.message, 'error');
                 });
                 
@@ -703,7 +703,7 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                     reject(new Error(errorMsg));
                 };
                 
-                setTimeout(() => {
+                setTimeout(function() {
                     if (!window.google || !window.google.maps) {
                         reject(new Error('Google Maps API loading timed out after 10 seconds. Check your internet connection and API key validity.'));
                     }
@@ -1248,7 +1248,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                     console.log('🗺️ Fitting map bounds to show all markers');
                     map.fitBounds(bounds);
                     
-                    setTimeout(() => {
+                    setTimeout(function() {
                         if (map.getZoom() > 15) {
                             map.setZoom(15);
                         }
@@ -1270,9 +1270,9 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                 appState.lastLocationCount = sheetsData.length;
                 
                 console.log('📍 All marker positions:');
-                markers.forEach((marker, index) => {
+                markers.forEach(function(marker, index) {
                     if (marker.locationData) {
-                        console.log(`Marker ${index}: ${marker.locationData.name} at ${marker.getPosition().lat()}, ${marker.getPosition().lng()}`);
+                        console.log('Marker ' + index + ': ' + marker.locationData.name + ' at ' + marker.getPosition().lat() + ', ' + marker.getPosition().lng());
                     }
                 });
                 
@@ -1385,9 +1385,9 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                     content: '<div style="padding: 15px; min-width: 250px;"><h3 style="margin: 0 0 10px 0; color: #333;">🎯 DW Location</h3><p><strong>Name:</strong> ' + locationData.name + '</p><p><strong>Address:</strong> ' + locationData.address + '</p><p><strong>Available:</strong> <span style="color: ' + (isZero ? '#999' : '#4CAF50') + '; font-weight: bold;">' + locationData.count + '</span></p><p><strong>Distance:</strong> ' + locationData.distance.toFixed(1) + ' miles</p><button onclick="window.open(\'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(locationData.address) + '\', \'_blank\')" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px;">🧭 Get Directions</button></div>'
                 });
 
-                marker.addListener('click', () => {
+                marker.addListener('click', function() {
                     console.log('🖱️ Marker clicked:', locationData.name);
-                    markers.forEach(m => {
+                    markers.forEach(function(m) {
                         if (m.infoWindow && m.infoWindow !== infoWindow) {
                             m.infoWindow.close();
                         }
@@ -1417,7 +1417,9 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
         }
 
         function clearMarkers() {
-            markers.forEach(marker => marker.setMap(null));
+            markers.forEach(function(marker) {
+                marker.setMap(null);
+            });
             markers = [];
         }
 
@@ -1425,20 +1427,14 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             const listContainer = document.getElementById('locationsList');
             listContainer.innerHTML = '';
 
-            sheetsData
-                .sort((a, b) => a.distance - b.distance)
-                .forEach(location => {
-                    const item = document.createElement('div');
-                    item.className = 'location-item';
-                    item.innerHTML = `
-                        <div>
-                            <div class="location-name">DW - ${location.address}</div>
-                            <div style="font-size: 0.8rem; color: #666;">${location.distance.toFixed(1)} miles away</div>
-                        </div>
-                        <div class="location-count ${location.count === 0 ? 'zero' : ''}">${location.count}</div>
-                    `;
-                    listContainer.appendChild(item);
-                });
+                sheetsData
+                    .sort(function(a, b) { return a.distance - b.distance; })
+                    .forEach(function(location) {
+                        const item = document.createElement('div');
+                        item.className = 'location-item';
+                        item.innerHTML = '<div><div class="location-name">DW - ' + location.address + '</div><div style="font-size: 0.8rem; color: #666;">' + location.distance.toFixed(1) + ' miles away</div></div><div class="location-count ' + (location.count === 0 ? 'zero' : '') + '">' + location.count + '</div>';
+                        listContainer.appendChild(item);
+                    });
         }
 
         async function refreshData() {
@@ -1559,8 +1555,8 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             console.log('User location:', userLocation);
             console.log('App state:', appState);
             
-            markers.forEach((marker, index) => {
-                console.log(`Marker ${index}:`, {
+            markers.forEach(function(marker, index) {
+                console.log('Marker ' + index + ':', {
                     position: marker.getPosition() ? {
                         lat: marker.getPosition().lat(),
                         lng: marker.getPosition().lng()
@@ -1597,10 +1593,10 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
 
         window.forceShowMarkers = function() {
             console.log('Forcing all markers to be visible...');
-            markers.forEach((marker, index) => {
+            markers.forEach(function(marker, index) {
                 marker.setMap(map);
                 marker.setVisible(true);
-                console.log(`Marker ${index} forced visible`);
+                console.log('Marker ' + index + ' forced visible');
             });
         };
 
@@ -1646,17 +1642,18 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             
             console.log('Test data:', testData);
             
-            processLocationsData(testData).then(() => {
+            processLocationsData(testData).then(function() {
                 console.log('✅ Test completed - check map for markers!');
                 return 'Test completed successfully';
-            }).catch(error => {
+            }).catch(function(error) {
                 console.error('❌ Test failed:', error);
                 return 'Test failed: ' + error.message;
             });
         };
 
-        window.testSingleAddress = function(address = '266 Regent Cir, Inglewood, CA 90301') {
-            console.log(`🔍 Testing single address: "${address}"`);
+        window.testSingleAddress = function(address) {
+            if (!address) address = '266 Regent Cir, Inglewood, CA 90301';
+            console.log('🔍 Testing single address: "' + address + '"');
             
             if (!window.google || !window.google.maps) {
                 console.error('❌ Google Maps not loaded');
@@ -1665,7 +1662,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             
             const geocoder = new google.maps.Geocoder();
             
-            geocodeAddress(geocoder, address).then(result => {
+            geocodeAddress(geocoder, address).then(function(result) {
                 console.log('✅ Geocoding successful:', {
                     address: address,
                     lat: result.lat(),
@@ -1699,7 +1696,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                 
                 return result;
                 
-            }).catch(error => {
+            }).catch(function(error) {
                 console.error('❌ Geocoding failed:', error);
                 return null;
             });
