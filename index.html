@@ -294,11 +294,11 @@
             <p>Your API keys are automatically loaded from Supabase. Click "Initialize App" to start tracking locations!</p>
         </div>
         
-        <button class="btn" onclick="initializeApp()" id="initBtn">🚀 Initialize App</button>
-        <button class="btn btn-secondary" onclick="generateQR()" id="qrBtn" disabled>📱 Generate QR Code</button>
-        <button class="btn btn-secondary" onclick="refreshData()" id="refreshBtn" disabled>🔄 Refresh Data</button>
-        <button class="btn btn-secondary" onclick="toggleRealTimeMode()" id="realTimeBtn" disabled>⏱️ Real-Time Mode: OFF</button>
-        <button class="btn btn-danger" onclick="showSetupForm()">⚙️ Update Configuration</button>
+        <button class="btn" id="initBtn">🚀 Initialize App</button>
+        <button class="btn btn-secondary" id="qrBtn" disabled>📱 Generate QR Code</button>
+        <button class="btn btn-secondary" id="refreshBtn" disabled>🔄 Refresh Data</button>
+        <button class="btn btn-secondary" id="realTimeBtn" disabled>⏱️ Real-Time Mode: OFF</button>
+        <button class="btn btn-danger" id="setupBtn">⚙️ Update Configuration</button>
     </div>
 
     <div class="setup-form" id="setupForm">
@@ -319,9 +319,9 @@
             <label for="userId">User ID (optional):</label>
             <input type="text" id="userId" placeholder="Unique identifier for your setup">
         </div>
-        <button class="btn" onclick="saveConfiguration()">💾 Save Configuration</button>
-        <button class="btn btn-secondary" onclick="hideSetupForm()">❌ Cancel</button>
-        <button class="btn btn-secondary" onclick="loadDemoConfig()">🎮 Load Demo Config</button>
+        <button class="btn" id="saveConfigBtn">💾 Save Configuration</button>
+        <button class="btn btn-secondary" id="cancelBtn">❌ Cancel</button>
+        <button class="btn btn-secondary" id="demoConfigBtn">🎮 Load Demo Config</button>
     </div>
 
     <div id="loadingDiv" class="loading" style="display: none;">
@@ -1740,6 +1740,16 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
         // Initialize app on load
         window.addEventListener('load', function() {
             updateStatus('Loading application...');
+            
+            // Add event listeners after DOM is loaded
+            document.getElementById('initBtn').addEventListener('click', initializeApp);
+            document.getElementById('qrBtn').addEventListener('click', generateQR);
+            document.getElementById('refreshBtn').addEventListener('click', refreshData);
+            document.getElementById('realTimeBtn').addEventListener('click', toggleRealTimeMode);
+            document.getElementById('setupBtn').addEventListener('click', showSetupForm);
+            document.getElementById('saveConfigBtn').addEventListener('click', saveConfiguration);
+            document.getElementById('cancelBtn').addEventListener('click', hideSetupForm);
+            document.getElementById('demoConfigBtn').addEventListener('click', loadDemoConfig);
             
             loadConfiguration().then(function(configLoaded) {
                 if (configLoaded) {
