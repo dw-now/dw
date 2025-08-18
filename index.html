@@ -582,6 +582,7 @@ Ready to initialize!`, 'success');
                 initBtn.textContent = '✅ Initialized';
                 qrBtn.disabled = false;
                 refreshBtn.disabled = false;
+                document.getElementById('realTimeBtn').disabled = false;
                 
                 if (updateInterval) clearInterval(updateInterval);
                 updateInterval = setInterval(refreshData, 30000);
@@ -665,7 +666,6 @@ Ready to initialize!`, 'success');
 
                 updateStatus('Loading Google Maps JavaScript API...');
                 
-                // Use proper async loading as recommended by Google
                 const script = document.createElement('script');
                 script.src = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&libraries=geometry,marker&loading=async`;
                 script.async = true;
@@ -690,7 +690,7 @@ Ready to initialize!`, 'success');
 • API key not properly configured
 • API key restrictions blocking your domain
 
-🏗️ Google Cloud Setup:
+🗃️ Google Cloud Setup:
 • Maps JavaScript API not enabled
 • Geocoding API not enabled  
 • Billing account not set up (REQUIRED)
@@ -795,6 +795,34 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                                 marker.markerElement.offsetParent.appendChild(infoDiv);
                                 
                                 setTimeout(() => {
+                                    infoDiv.remove();
+                                }, 5000);
+                            }
+                        };
+                        this.setContent = (content) => {
+                            this.content = content;
+                        };
+                        this.close = () => {};
+                        return this;
+                    },
+                    LatLng: function(lat, lng) { 
+                        return { 
+                            lat: () => lat, 
+                            lng: () => lng,
+                            lat: lat,
+                            lng: lng
+                        }; 
+                    },
+                    LatLngBounds: function() { 
+                        return { 
+                            extend: () => {},
+                            contains: () => true
+                        }; 
+                    },
+                    Geocoder: function() {
+                        return {
+                            geocode: (request, callback) => {
+                                setTimeout(() => {
                                     callback([{
                                         geometry: {
                                             location: new google.maps.LatLng(
@@ -819,6 +847,10 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                     },
                     Animation: {
                         DROP: 1
+                    },
+                    event: {
+                        addListenerOnce: () => {},
+                        addListener: () => {}
                     }
                 }
             };
@@ -976,7 +1008,7 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                 
                 showAlert('🚀 Real-Time Mode activated! Data will refresh every 10 seconds. Add new addresses to your Google Sheet and watch them appear!', 'success');
                 
-                // Do an immediate refresh (don't await here)
+                // Do an immediate refresh
                 refreshData();
                 
             } else {
@@ -992,6 +1024,8 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                 showAlert('Real-Time Mode deactivated. Data will refresh every 30 seconds.', 'info');
             }
         }
+
+        async function loadSheetsData() {
             updateStatus('Loading sheet data...');
             document.getElementById('loadingDiv').style.display = 'block';
 
@@ -1083,7 +1117,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
 
         async function loadDemoData() {
             const demoData = getDemoData();
-            await processLocationsData(demoData);
+            return processLocationsData(demoData);
         }
 
         function getDemoData() {
@@ -1183,54 +1217,50 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                     }
                     
                     processedCount++;
-                    console.log(`🔍 Geocoding: "${name}" at "${address}" (count: ${count})`);
+                    console.log(`🎯 Geocoding: "${name}" at "${address}" (count: ${count})`);
                     
                     try {
-                        geocodeAddress(geocoder, address).then(function(location) {
-                            console.log('✅ Geocoded "' + address + '" to:', location.lat(), location.lng());
+                        const location = await geocodeAddress(geocoder, address);
+                        console.log('✅ Geocoded "' + address + '" to:', location.lat(), location.lng());
+                        
+                        let distance = 0;
+                        if (appState.apiKey !== 'DEMO_MODE') {
+                            distance = google.maps.geometry.spherical.computeDistanceBetween(
+                                new google.maps.LatLng(userLocation.lat, userLocation.lng),
+                                location
+                            ) / 1609.34;
+                        } else {
+                            distance = Math.random() * 3;
+                        }
+                        
+                        console.log('📍 Distance from user: ' + distance.toFixed(2) + ' miles');
+
+                        if (distance <= 3) {
+                            const locationData = {
+                                name: name || 'Location ' + (successCount + 1),
+                                address,
+                                count: parseInt(count) || 0,
+                                position: location,
+                                distance
+                            };
+
+                            console.log('📍 Adding location to map:', locationData);
+                            sheetsData.push(locationData);
                             
-                            let distance = 0;
+                            const marker = createMarker(locationData);
+                            if (marker) {
+                                console.log('✅ Marker created and should be visible on map');
+                                successCount++;
+                            } else {
+                                console.log('❌ Failed to create marker');
+                            }
+                            
                             if (appState.apiKey !== 'DEMO_MODE') {
-                                distance = google.maps.geometry.spherical.computeDistanceBetween(
-                                    new google.maps.LatLng(userLocation.lat, userLocation.lng),
-                                    location
-                                ) / 1609.34;
-                            } else {
-                                distance = Math.random() * 3;
+                                bounds.extend(location);
                             }
-                            
-                            console.log('📏 Distance from user: ' + distance.toFixed(2) + ' miles');
-
-                            if (distance <= 3) {
-                                const locationData = {
-                                    name: name || 'Location ' + (successCount + 1),
-                                    address,
-                                    count: parseInt(count) || 0,
-                                    position: location,
-                                    distance
-                                };
-
-                                console.log('📍 Adding location to map:', locationData);
-                                sheetsData.push(locationData);
-                                
-                                const marker = createMarker(locationData);
-                                if (marker) {
-                                    console.log('✅ Marker created and should be visible on map');
-                                    successCount++;
-                                } else {
-                                    console.log('❌ Failed to create marker');
-                                }
-                                
-                                if (appState.apiKey !== 'DEMO_MODE') {
-                                    bounds.extend(location);
-                                }
-                            } else {
-                                console.log('📍 Location "' + name + '" is too far (' + distance.toFixed(2) + ' miles)');
-                            }
-                        }).catch(function(error) {
-                            console.error('❌ Failed to geocode "' + address + '":', error.message);
-                            updateStatus('Could not find address: "' + address + '"');
-                        });
+                        } else {
+                            console.log('📍 Location "' + name + '" is too far (' + distance.toFixed(2) + ' miles)');
+                        }
                     } catch (error) {
                         console.error('❌ Failed to geocode "' + address + '":', error.message);
                         updateStatus('Could not find address: "' + address + '"');
@@ -1355,7 +1385,6 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             console.log('📍 Final position for marker:', position);
 
             try {
-                // Use standard Marker (AdvancedMarkerElement requires more complex setup)
                 const marker = new google.maps.Marker({
                     position: position,
                     map: map,
@@ -1415,11 +1444,6 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             }
         }
 
-        function getDirections(address) {
-            const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
-            window.open(url, '_blank');
-        }
-
         function clearMarkers() {
             markers.forEach(function(marker) {
                 marker.setMap(null);
@@ -1431,14 +1455,14 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             const listContainer = document.getElementById('locationsList');
             listContainer.innerHTML = '';
 
-                sheetsData
-                    .sort(function(a, b) { return a.distance - b.distance; })
-                    .forEach(function(location) {
-                        const item = document.createElement('div');
-                        item.className = 'location-item';
-                        item.innerHTML = '<div><div class="location-name">DW - ' + location.address + '</div><div style="font-size: 0.8rem; color: #666;">' + location.distance.toFixed(1) + ' miles away</div></div><div class="location-count ' + (location.count === 0 ? 'zero' : '') + '">' + location.count + '</div>';
-                        listContainer.appendChild(item);
-                    });
+            sheetsData
+                .sort(function(a, b) { return a.distance - b.distance; })
+                .forEach(function(location) {
+                    const item = document.createElement('div');
+                    item.className = 'location-item';
+                    item.innerHTML = '<div><div class="location-name">DW - ' + location.address + '</div><div style="font-size: 0.8rem; color: #666;">' + location.distance.toFixed(1) + ' miles away</div></div><div class="location-count ' + (location.count === 0 ? 'zero' : '') + '">' + location.count + '</div>';
+                    listContainer.appendChild(item);
+                });
         }
 
         async function refreshData() {
@@ -1657,7 +1681,7 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
 
         window.testSingleAddress = function(address) {
             if (!address) address = '266 Regent Cir, Inglewood, CA 90301';
-            console.log('🔍 Testing single address: "' + address + '"');
+            console.log('🎯 Testing single address: "' + address + '"');
             
             if (!window.google || !window.google.maps) {
                 console.error('❌ Google Maps not loaded');
@@ -1730,37 +1754,9 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             });
             
             setTimeout(function() {
-                console.log('\n🔧 DEBUGGING TOOLS AVAILABLE:\n═══════════════════════════════════════\n\nRun these commands in the console to debug markers:\n\n📍 debugMarkers()     - Show detailed marker information\n🔄 forceShowMarkers() - Force all markers to be visible  \n🎯 createTestMarker() - Create a test marker manually\n🧪 testWithYourData() - Test with your exact data\n🔍 testSingleAddress() - Test geocoding one address\n\nExample: Type "debugMarkers()" and press Enter to see marker info.');
+                console.log('\n🔧 DEBUGGING TOOLS AVAILABLE:\n╔══════════════════════════════════════════════╗\n\nRun these commands in the console to debug markers:\n\n📍 debugMarkers()     - Show detailed marker information\n🔄 forceShowMarkers() - Force all markers to be visible  \n🎯 createTestMarker() - Create a test marker manually\n🧪 testWithYourData() - Test with your exact data\n🎯 testSingleAddress() - Test geocoding one address\n\nExample: Type "debugMarkers()" and press Enter to see marker info.');
             }, 2000);
         });
     </script>
 </body>
 </html>
-                                    if (infoDiv.parentNode) infoDiv.remove();
-                                }, 5000);
-                            }
-                        };
-                        this.setContent = (content) => {
-                            this.content = content;
-                        };
-                        this.close = () => {};
-                        return this;
-                    },
-                    LatLng: function(lat, lng) { 
-                        return { 
-                            lat: () => lat, 
-                            lng: () => lng,
-                            lat: lat,
-                            lng: lng
-                        }; 
-                    },
-                    LatLngBounds: function() { 
-                        return { 
-                            extend: () => {},
-                            contains: () => true
-                        }; 
-                    },
-                    Geocoder: function() {
-                        return {
-                            geocode: (request, callback) => {
-                                setTimeout(() => {
