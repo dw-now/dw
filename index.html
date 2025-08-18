@@ -824,12 +824,11 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                         return this;
                     },
                     LatLng: function(lat, lng) { 
-                        return { 
-                            lat: () => lat, 
-                            lng: () => lng,
-                            lat: lat,
-                            lng: lng
-                        }; 
+                        this.latValue = lat;
+                        this.lngValue = lng;
+                        this.lat = () => lat;
+                        this.lng = () => lng;
+                        return this;
                     },
                     LatLngBounds: function() { 
                         return { 
