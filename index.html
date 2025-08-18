@@ -676,7 +676,44 @@
                     return;
                 }
 
-                reject(new Error('Google Maps API key required'));
+                if (!appState.apiKey || appState.apiKey.length < 20) {
+                    reject(new Error('Google Maps API key required'));
+                    return;
+                }
+
+                updateStatus('Loading Google Maps JavaScript API...');
+                
+                const testUrl = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&libraries=geometry,marker&loading=async&callback=__googleMapsCallback`;
+                
+                window.__googleMapsCallback = () => {
+                    if (window.google && window.google.maps) {
+                        updateStatus('Google Maps API loaded successfully ✓');
+                        delete window.__googleMapsCallback;
+                        resolve();
+                    } else {
+                        reject(new Error('Google Maps API failed to initialize properly.'));
+                    }
+                };
+
+                const script = document.createElement('script');
+                script.src = testUrl;
+                script.async = true;
+                script.defer = true;
+                
+                script.onerror = (error) => {
+                    console.error('Google Maps script error details:', error);
+                    delete window.__googleMapsCallback;
+                    reject(new Error('Google Maps API failed to load'));
+                };
+                
+                setTimeout(() => {
+                    if (!window.google || !window.google.maps) {
+                        delete window.__googleMapsCallback;
+                        reject(new Error('Google Maps API loading timed out after 10 seconds.'));
+                    }
+                }, 10000);
+                
+                document.head.appendChild(script);
             });
         }
 
@@ -812,9 +849,68 @@
         }
 
         function initializeMap() {
+            if (appState.apiKey === 'DEMO_MODE') {
+                map = new google.maps.Map(document.getElementById('map'), {});
+                return;
+            }
+
+            console.log('Initializing Google Maps with user location:', userLocation);
+
             map = new google.maps.Map(document.getElementById('map'), {
                 zoom: 12,
-                center: userLocation
+                center: userLocation,
+                mapId: "DEMO_MAP_ID" // Required for Advanced Markers
+            });
+
+            console.log('Map initialized:', map);
+
+            // Use AdvancedMarkerElement for user location if available, fallback to regular Marker
+            if (google.maps.marker && google.maps.marker.AdvancedMarkerElement) {
+                const userMarkerElement = document.createElement('div');
+                userMarkerElement.innerHTML = `
+                    <div style="
+                        width: 20px; 
+                        height: 20px; 
+                        background: #4285F4; 
+                        border: 3px solid white; 
+                        border-radius: 50%; 
+                        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                    "></div>
+                `;
+
+                const userMarker = new google.maps.marker.AdvancedMarkerElement({
+                    map: map,
+                    position: userLocation,
+                    content: userMarkerElement,
+                    title: 'Your Current Location'
+                });
+            } else {
+                // Fallback to regular marker
+                const userMarker = new google.maps.Marker({
+                    position: userLocation,
+                    map: map,
+                    title: 'Your Current Location',
+                    icon: {
+                        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="10" fill="#4285F4" stroke="white" stroke-width="3"/>
+                                <circle cx="12" cy="12" r="4" fill="white"/>
+                            </svg>
+                        `)}`,
+                        scaledSize: new google.maps.Size(24, 24),
+                        anchor: new google.maps.Point(12, 12)
+                    },
+                    zIndex: 1000
+                });
+            }
+
+            map.addListener('click', (event) => {
+                console.log('Map clicked at:', event.latLng.toString());
+            });
+
+            google.maps.event.addListenerOnce(map, 'idle', () => {
+                console.log('Map is fully loaded and ready');
+                updateStatus('Map loaded and ready for markers');
             });
         }
 
@@ -919,14 +1015,64 @@
             const iconColor = isZero ? '#999999' : '#FFD700';
             
             try {
-                const marker = new google.maps.Marker({
-                    position: {
-                        lat: locationData.position.lat(),
-                        lng: locationData.position.lng()
-                    },
-                    map: map,
-                    title: `DW ${locationData.count} - ${locationData.name}`
-                });
+                const position = {
+                    lat: locationData.position.lat(),
+                    lng: locationData.position.lng()
+                };
+
+                let marker;
+
+                // Use AdvancedMarkerElement if available (modern approach)
+                if (google.maps.marker && google.maps.marker.AdvancedMarkerElement) {
+                    const markerElement = document.createElement('div');
+                    markerElement.innerHTML = `
+                        <div style="
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                            width: 30px;
+                            height: 30px;
+                            background: ${iconColor};
+                            border: 3px solid white;
+                            border-radius: 50%;
+                            font-weight: bold;
+                            font-size: 12px;
+                            color: black;
+                            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                            cursor: pointer;
+                        ">
+                            ${locationData.count}
+                        </div>
+                    `;
+
+                    marker = new google.maps.marker.AdvancedMarkerElement({
+                        map: map,
+                        position: position,
+                        content: markerElement,
+                        title: `DW ${locationData.count} - ${locationData.name}`
+                    });
+                } else {
+                    // Fallback to regular Marker for older browsers
+                    marker = new google.maps.Marker({
+                        position: position,
+                        map: map,
+                        title: `DW ${locationData.count} - ${locationData.name}`,
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            fillColor: iconColor,
+                            fillOpacity: 1,
+                            strokeColor: '#FFFFFF',
+                            strokeWeight: 3,
+                            scale: 15
+                        },
+                        label: {
+                            text: locationData.count.toString(),
+                            color: '#000000',
+                            fontSize: '12px',
+                            fontWeight: 'bold'
+                        }
+                    });
+                }
 
                 const infoWindow = new google.maps.InfoWindow({
                     content: `
@@ -936,11 +1082,21 @@
                             <p><strong>Address:</strong> ${locationData.address}</p>
                             <p><strong>Available:</strong> <span style="color: ${isZero ? '#999' : '#4CAF50'}; font-weight: bold;">${locationData.count}</span></p>
                             <p><strong>Distance:</strong> ${locationData.distance.toFixed(1)} miles</p>
+                            <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(locationData.address)}', '_blank')" 
+                                    style="background: #4CAF50; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-top: 8px;">
+                                🧭 Get Directions
+                            </button>
                         </div>
                     `
                 });
 
                 marker.addListener('click', () => {
+                    // Close other info windows
+                    markers.forEach(m => {
+                        if (m.infoWindow && m.infoWindow !== infoWindow) {
+                            m.infoWindow.close();
+                        }
+                    });
                     infoWindow.open(map, marker);
                 });
 
@@ -957,7 +1113,13 @@
         }
 
         function clearMarkers() {
-            markers.forEach(marker => marker.setMap(null));
+            markers.forEach(marker => {
+                if (marker.setMap) {
+                    marker.setMap(null);
+                } else if (marker.map) {
+                    marker.map = null; // For AdvancedMarkerElement
+                }
+            });
             markers = [];
         }
 
