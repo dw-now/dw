@@ -839,119 +839,60 @@
                 autoRefreshInterval = setInterval(() => {
                     refreshData();
                 }, interval);
-                showAlert(`Auto-refresh enabled: every ${interval/1000} seconds`, 'info');
+                showAlert(`Auto-refresh enabled: every ${interval / 1000} seconds`, 'info');
             }
         }
 
-        // Initialize app
-        async function initializeApp() {
-            const initBtn = document.getElementById('initBtn');
-            const qrBtn = document.getElementById('qrBtn');
-            const refreshBtn = document.getElementById('refreshBtn');
-            const exportBtn = document.getElementById('exportBtn');
-            
-            if (initBtn) {
-                initBtn.disabled = true;
-                initBtn.textContent = '⏳ Initializing...';
-            }
+        // Check if this is an auto-start session
+        function checkAutoStart() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('autostart') === 'true';
+        }
 
-            updateStatus('Validating configuration...');
+        // Auto-start for QR users
+        async function autoStartForQRUsers() {
+            if (!checkAutoStart()) return false;
+            
+            updateStatus('Auto-starting for mobile user...');
+            document.getElementById('mainPanel').style.display = 'none';
+            document.getElementById('setupForm').style.display = 'none';
             
             try {
-                await loadGoogleMaps();
-                updateStatus('Google Maps loaded ✓');
+                appState.apiKey = 'DEMO_MODE';
+                appState.sheetId = 'demo';
+                appState.range = 'Sheet1!A:C';
+                appState.userId = 'qr_user';
                 
-                await getUserLocation();
-                updateStatus('Location obtained ✓');
-                
-                if (appState.sheetId && appState.sheetId !== 'demo') {
-                    updateStatus('Loading Google Sheets data...');
-                    await loadSheetsData();
-                } else {
-                    updateStatus('Loading demo data...');
-                    await loadDemoData();
-                }
-                
-                appState.initialized = true;
-                updateStatus('App initialized successfully! 🎉');
-                
-                if (initBtn) {
-                    initBtn.textContent = '✅ Initialized';
-                    qrBtn.disabled = false;
-                    refreshBtn.disabled = false;
-                    exportBtn.disabled = false;
-                }
-                
-                document.getElementById('filterControls').style.display = 'flex';
-                showAlert('App initialized successfully!', 'success');
-                
+                await initializeApp();
+                showAlert('Welcome! Showing nearby DW locations 📍', 'info');
+                return true;
             } catch (error) {
-                console.error('Initialization error:', error);
-                
-                if (initBtn) {
-                    initBtn.disabled = false;
-                    initBtn.textContent = '🚀 Initialize App';
-                }
-                
-                updateStatus('Initialization failed ❌');
-                showAlert('Initialization failed: ' + error.message, 'error');
+                console.error('Auto-start failed:', error);
+                showAlert('Unable to load locations', 'error');
+                return false;
             }
         }
 
-        // Generate QR code
-        async function generateQR() {
-            let shareableUrl = window.location.href;
-            
-            const urlObj = new URL(shareableUrl);
-            urlObj.searchParams.set('autostart', 'true');
-            shareableUrl = urlObj.toString();
-            
-            const qrContainer = document.getElementById('qrContainer');
-            const qrCodeDiv = document.getElementById('qrCode');
-            
-            qrCodeDiv.innerHTML = '';
-            
-            new QRCode(qrCodeDiv, {
-                text: shareableUrl,
-                width: 256,
-                height: 256,
-                colorDark: '#000000',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.H
-            });
-            
-            qrContainer.style.display = 'block';
-            showAlert('QR code generated!', 'success');
+        // Main functions
+        async function showSetupForm() {
+            document.getElementById('setupForm').classList.add('active');
+            document.getElementById('mainPanel').style.display = 'none';
         }
 
-        // Refresh data
-        async function refreshData() {
-            if (!appState.initialized) {
-                showAlert('Please initialize the app first', 'error');
-                return;
-            }
-
-            try {
-                showLoadingOverlay(true);
-                updateStatus('Refreshing data...');
-                
-                if (appState.sheetId && appState.sheetId !== 'demo') {
-                    await loadSheetsData();
-                } else {
-                    await loadDemoData();
-                }
-                
-                updateStats();
-                showLoadingOverlay(false);
-                showAlert('Data refreshed successfully!', 'success');
-                
-            } catch (error) {
-                showLoadingOverlay(false);
-                showAlert('Failed to refresh: ' + error.message, 'error');
-            }
+        async function hideSetupForm() {
+            document.getElementById('setupForm').classList.remove('active');
+            document.getElementById('mainPanel').style.display = 'block';
         }
 
-        // Save configuration
+        async function loadDemoConfig() {
+            document.getElementById('apiKey').value = 'DEMO_MODE';
+            document.getElementById('sheetId').value = 'demo';
+            document.getElementById('range').value = 'Sheet1!A:C';
+            document.getElementById('userId').value = 'demo_user';
+            document.getElementById('mapStyle').value = 'default';
+            showAlert('Demo configuration loaded!', 'success');
+        }
+
         async function saveConfiguration() {
             const apiKey = document.getElementById('apiKey').value.trim();
             const sheetId = document.getElementById('sheetId').value.trim();
@@ -994,12 +935,177 @@
                 updateStatus('Configuration saved! Ready to initialize.');
                 
             } catch (error) {
-                console.error('Error saving:', error);
-                showAlert('Failed to save: ' + error.message, 'error');
+                console.error('Error saving configuration:', error);
+                showAlert('Failed to save configuration: ' + error.message, 'error');
             }
         }
 
-        // Load configuration
+        async function initializeApp() {
+            const initBtn = document.getElementById('initBtn');
+            const qrBtn = document.getElementById('qrBtn');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const exportBtn = document.getElementById('exportBtn');
+            
+            if (initBtn) {
+                initBtn.disabled = true;
+                initBtn.textContent = '⏳ Initializing...';
+            }
+
+            updateStatus('Starting initialization...');
+            showLoadingOverlay(true);
+            
+            try {
+                await loadGoogleMaps();
+                updateStatus('Maps loaded ✓');
+                
+                await getUserLocation();
+                updateStatus('Location obtained ✓');
+                
+                if (appState.sheetId && appState.sheetId !== 'demo') {
+                    updateStatus('Loading sheet data...');
+                    await loadSheetsData();
+                } else {
+                    updateStatus('Loading demo data...');
+                    await loadDemoData();
+                }
+                
+                appState.initialized = true;
+                updateStatus('Ready! Tracking locations in real-time');
+                
+                if (initBtn) {
+                    initBtn.textContent = '✅ Initialized';
+                    qrBtn.disabled = false;
+                    refreshBtn.disabled = false;
+                    exportBtn.disabled = false;
+                }
+                
+                document.getElementById('filterControls').style.display = 'flex';
+                showLoadingOverlay(false);
+                showAlert('App initialized successfully! 🎉', 'success');
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                showLoadingOverlay(false);
+                
+                if (initBtn) {
+                    initBtn.disabled = false;
+                    initBtn.textContent = '🚀 Initialize App';
+                }
+                
+                updateStatus('Initialization failed');
+                showAlert('Initialization failed: ' + error.message, 'error');
+            }
+        }
+
+        async function generateQR() {
+            let shareableUrl = window.location.href;
+            const urlObj = new URL(shareableUrl);
+            urlObj.searchParams.set('autostart', 'true');
+            shareableUrl = urlObj.toString();
+            
+            const qrContainer = document.getElementById('qrContainer');
+            const qrCodeDiv = document.getElementById('qrCode');
+            
+            qrCodeDiv.innerHTML = '';
+            
+            new QRCode(qrCodeDiv, {
+                text: shareableUrl,
+                width: 256,
+                height: 256,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            
+            qrContainer.style.display = 'block';
+            showAlert('QR code generated!', 'success');
+        }
+
+        async function refreshData() {
+            if (!appState.initialized) {
+                showAlert('Please initialize the app first', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('Refreshing data...');
+                showLoadingOverlay(true);
+                
+                if (appState.sheetId && appState.sheetId !== 'demo') {
+                    await loadSheetsData();
+                } else {
+                    await loadDemoData();
+                }
+                
+                updateStats();
+                showLoadingOverlay(false);
+                showAlert('Data refreshed!', 'success');
+                updateStatus('Data updated successfully');
+            } catch (error) {
+                showLoadingOverlay(false);
+                showAlert('Failed to refresh: ' + error.message, 'error');
+            }
+        }
+
+        // Map control functions
+        function centerOnUser() {
+            if (userLocation && map) {
+                map.setCenter(userLocation);
+                map.setZoom(14);
+                showAlert('Centered on your location', 'info');
+            }
+        }
+
+        function fitAllMarkers() {
+            if (markers.length === 0) return;
+            
+            const bounds = new google.maps.LatLngBounds();
+            markers.forEach(marker => {
+                if (marker.getVisible()) {
+                    bounds.extend(marker.getPosition());
+                }
+            });
+            map.fitBounds(bounds);
+            showAlert('Showing all locations', 'info');
+        }
+
+        function toggleMapType() {
+            mapType = mapType === 'roadmap' ? 'satellite' : 'roadmap';
+            map.setMapTypeId(mapType);
+        }
+
+        // Event listeners setup
+        function setupEventListeners() {
+            // Main controls
+            document.getElementById('initBtn').addEventListener('click', initializeApp);
+            document.getElementById('qrBtn').addEventListener('click', generateQR);
+            document.getElementById('refreshBtn').addEventListener('click', refreshData);
+            document.getElementById('exportBtn').addEventListener('click', exportData);
+            document.getElementById('setupBtn').addEventListener('click', showSetupForm);
+            
+            // Setup form
+            document.getElementById('saveBtn').addEventListener('click', saveConfiguration);
+            document.getElementById('cancelBtn').addEventListener('click', hideSetupForm);
+            document.getElementById('demoBtn').addEventListener('click', loadDemoConfig);
+            document.getElementById('clearBtn').addEventListener('click', clearAllData);
+            
+            // Theme toggle
+            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+            
+            // Auto-refresh
+            document.getElementById('autoRefresh').addEventListener('change', setupAutoRefresh);
+            
+            // Map controls
+            document.getElementById('centerBtn')?.addEventListener('click', centerOnUser);
+            document.getElementById('fitBtn')?.addEventListener('click', fitAllMarkers);
+            document.getElementById('satelliteBtn')?.addEventListener('click', toggleMapType);
+            
+            // Filter controls
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
+            });
+        }
+
         async function loadConfiguration() {
             try {
                 let config = null;
@@ -1014,7 +1120,9 @@
                     if (!error && data && data.length > 0) {
                         config = data[0];
                     }
-                } else {
+                }
+                
+                if (!config) {
                     const apiKey = localStorage.getItem('google_maps_api_key');
                     if (apiKey) {
                         config = {
@@ -1034,7 +1142,7 @@
                     appState.userId = config.user_id || 'default_user';
                     appState.mapStyle = config.map_style || 'default';
                     
-                    updateStatus('Configuration loaded! Click "Initialize App" to start.');
+                    updateStatus('Configuration loaded! Click Initialize to start.');
                     return true;
                 }
 
@@ -1046,7 +1154,6 @@
             return false;
         }
 
-        // Map functions
         function loadGoogleMaps() {
             return new Promise((resolve, reject) => {
                 if (window.google && window.google.maps) {
@@ -1075,10 +1182,10 @@
                 maps: {
                     Map: function(element, options) {
                         element.innerHTML = `
-                            <div style="position: relative; height: 100%; background: #e3f2fd;">
-                                <div style="padding: 20px; text-align: center;">
-                                    <h3>🗺️ Demo Map View</h3>
-                                    <p>Locations will appear here with real Google Maps API</p>
+                            <div style="position: relative; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center;">
+                                <div style="text-align: center; color: white;">
+                                    <h2>🗺️ Demo Map Mode</h2>
+                                    <p>Real map requires Google Maps API key</p>
                                     <div id="demoMarkers" style="margin-top: 20px;"></div>
                                 </div>
                             </div>
@@ -1090,39 +1197,49 @@
                         this.setCenter = () => {};
                         this.setMapTypeId = () => {};
                         this.addListener = () => {};
-                        this.setOptions = () => {};
                         return this;
                     },
                     Marker: function(options) {
                         this.options = options;
-                        this.setVisible = () => {};
-                        this.setMap = () => {};
-                        this.getPosition = () => ({ lat: () => 34.0522, lng: () => -118.2437 });
+                        this.visible = true;
                         this.addListener = () => {};
+                        this.setMap = () => {};
+                        this.setVisible = (v) => { this.visible = v; };
+                        this.getVisible = () => this.visible;
+                        this.getPosition = () => ({ 
+                            lat: () => options.position.lat, 
+                            lng: () => options.position.lng 
+                        });
+                        this.getTitle = () => options.title;
                         return this;
                     },
-                    InfoWindow: function() {
+                    InfoWindow: function(options) {
                         this.open = () => {};
                         this.close = () => {};
                         return this;
                     },
-                    LatLng: function(lat, lng) {
+                    LatLng: function(lat, lng) { 
                         this.lat = () => lat;
                         this.lng = () => lng;
                         return this;
                     },
-                    LatLngBounds: function() {
-                        return { extend: () => {} };
+                    LatLngBounds: function() { 
+                        return { 
+                            extend: () => {},
+                            getCenter: () => new google.maps.LatLng(34.0522, -118.2437)
+                        }; 
                     },
                     Geocoder: function() {
                         return {
                             geocode: (request, callback) => {
                                 setTimeout(() => {
-                                    const latLng = new google.maps.LatLng(
-                                        34.0522 + (Math.random() - 0.5) * 0.1,
-                                        -118.2437 + (Math.random() - 0.5) * 0.1
-                                    );
-                                    callback([{ geometry: { location: latLng } }], 'OK');
+                                    const lat = 34.0522 + (Math.random() - 0.5) * 0.2;
+                                    const lng = -118.2437 + (Math.random() - 0.5) * 0.2;
+                                    callback([{ 
+                                        geometry: { 
+                                            location: new google.maps.LatLng(lat, lng) 
+                                        } 
+                                    }], 'OK');
                                 }, 100);
                             }
                         };
@@ -1132,11 +1249,10 @@
                             computeDistanceBetween: () => Math.random() * 10 * 1609.34
                         }
                     },
-                    MapTypeId: {
-                        ROADMAP: 'roadmap',
-                        SATELLITE: 'satellite',
-                        HYBRID: 'hybrid',
-                        TERRAIN: 'terrain'
+                    Animation: { DROP: 1 },
+                    event: {
+                        addListenerOnce: (map, event, callback) => setTimeout(callback, 100),
+                        addListener: () => {}
                     }
                 }
             };
@@ -1184,40 +1300,41 @@
             map = new google.maps.Map(document.getElementById('map'), mapOptions);
 
             // Add user location marker
-            new google.maps.Marker({
-                position: userLocation,
-                map: map,
-                title: 'Your Location',
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 10,
-                    fillColor: '#4285F4',
-                    fillOpacity: 1,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 2
-                }
-            });
-        }
-
-        // Data loading functions
-        async function loadDemoData() {
-            const demoData = [
-                ['DW Downtown', '123 Main St, Los Angeles, CA', '15'],
-                ['DW Westside', '456 Ocean Ave, Santa Monica, CA', '8'],
-                ['DW Valley', '789 Ventura Blvd, Sherman Oaks, CA', '0'],
-                ['DW South Bay', '321 Beach Blvd, Manhattan Beach, CA', '12'],
-                ['DW Hollywood', '654 Sunset Blvd, Hollywood, CA', '3'],
-                ['DW Pasadena', '987 Colorado Blvd, Pasadena, CA', '7'],
-                ['DW Long Beach', '147 Pine Ave, Long Beach, CA', '0'],
-                ['DW Glendale', '258 Brand Blvd, Glendale, CA', '10']
-            ];
-            
-            await processLocationsData(demoData);
+            if (appState.apiKey !== 'DEMO_MODE') {
+                new google.maps.Marker({
+                    position: userLocation,
+                    map: map,
+                    title: 'Your Location',
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 8,
+                        fillColor: '#4285F4',
+                        fillOpacity: 1,
+                        strokeColor: 'white',
+                        strokeWeight: 2
+                    }
+                });
+            }
         }
 
         async function loadSheetsData() {
-            // Implement actual Google Sheets API call here
-            await loadDemoData(); // For now, use demo data
+            // For now, load demo data
+            await loadDemoData();
+        }
+
+        async function loadDemoData() {
+            const demoData = [
+                ['DW Hollywood', '6801 Hollywood Blvd, Hollywood, CA 90028', '23'],
+                ['DW Beverly Hills', '9570 Wilshire Blvd, Beverly Hills, CA 90212', '15'],
+                ['DW Santa Monica', '395 Santa Monica Pier, Santa Monica, CA 90401', '0'],
+                ['DW Pasadena', '300 E Colorado Blvd, Pasadena, CA 91101', '8'],
+                ['DW Downtown LA', '633 W 5th St, Los Angeles, CA 90071', '42'],
+                ['DW Venice Beach', '1800 Ocean Front Walk, Venice, CA 90291', '5'],
+                ['DW Burbank', '201 E Magnolia Blvd, Burbank, CA 91502', '12'],
+                ['DW Long Beach', '100 Aquarium Way, Long Beach, CA 90802', '0']
+            ];
+            
+            await processLocationsData(demoData);
         }
 
         async function processLocationsData(data) {
@@ -1247,7 +1364,7 @@
                             address,
                             count: parseInt(count) || 0,
                             position: location,
-                            distance
+                            distance: distance / 1609.34 // Convert to miles
                         };
 
                         sheetsData.push(locationData);
@@ -1255,7 +1372,7 @@
                         successCount++;
                         
                     } catch (error) {
-                        console.error(`Failed to geocode: ${error.message}`);
+                        console.error(`Failed to geocode "${address}":`, error);
                     }
                 }
             }
@@ -1264,8 +1381,17 @@
                 updateLocationsList(sheetsData);
                 updateStats();
                 document.getElementById('infoPanel').style.display = 'block';
-                fitMapToMarkers();
+                updateStatus(`Tracking ${sheetsData.length} locations`);
             }
+        }
+
+        function calculateDistance(point1, point2) {
+            if (window.google && google.maps.geometry) {
+                const p1 = new google.maps.LatLng(point1.lat, point1.lng);
+                const p2 = new google.maps.LatLng(point2.lat(), point2.lng());
+                return google.maps.geometry.spherical.computeDistanceBetween(p1, p2);
+            }
+            return Math.random() * 10 * 1609.34; // Demo distance in meters
         }
 
         function geocodeAddress(geocoder, address) {
@@ -1280,43 +1406,39 @@
             });
         }
 
-        function calculateDistance(pos1, pos2) {
-            if (!window.google || !window.google.maps || !window.google.maps.geometry) {
-                return Math.random() * 10;
-            }
-            
-            const from = new google.maps.LatLng(pos1.lat, pos1.lng);
-            const to = pos2;
-            const distance = google.maps.geometry.spherical.computeDistanceBetween(from, to);
-            return distance / 1609.34; // Convert to miles
-        }
-
         function createMarker(locationData) {
             const isZero = locationData.count === 0;
-            const isLow = locationData.count > 0 && locationData.count < 5;
+            const isLow = locationData.count > 0 && locationData.count < 10;
             
             const marker = new google.maps.Marker({
-                position: locationData.position,
+                position: {
+                    lat: locationData.position.lat(),
+                    lng: locationData.position.lng()
+                },
                 map: map,
                 title: `${locationData.name} (${locationData.count} available)`,
-                icon: {
-                    url: `data:image/svg+xml,${encodeURIComponent(`
-                        <svg width="40" height="40" xmlns="http://www.w3.org/2000/svg">
-                            <circle cx="20" cy="20" r="18" fill="${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'}" stroke="white" stroke-width="2"/>
-                            <text x="20" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="bold">${locationData.count}</text>
-                        </svg>
-                    `)}`,
-                    scaledSize: new google.maps.Size(40, 40)
-                }
+                animation: google.maps.Animation.DROP,
+                icon: appState.apiKey !== 'DEMO_MODE' ? {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 10,
+                    fillColor: isZero ? '#999999' : (isLow ? '#FF9800' : '#4CAF50'),
+                    fillOpacity: 0.8,
+                    strokeColor: 'white',
+                    strokeWeight: 2
+                } : undefined
             });
 
             const infoWindow = new google.maps.InfoWindow({
                 content: `
-                    <div style="padding: 10px;">
-                        <h4>${locationData.name}</h4>
-                        <p>${locationData.address}</p>
-                        <p><strong>Available:</strong> ${locationData.count}</p>
-                        <p><strong>Distance:</strong> ${locationData.distance.toFixed(1)} mi</p>
+                    <div style="padding: 15px; min-width: 250px;">
+                        <h3 style="margin: 0 0 10px 0;">📍 ${locationData.name}</h3>
+                        <p><strong>Address:</strong> ${locationData.address}</p>
+                        <p><strong>Available:</strong> 
+                            <span style="color: ${isZero ? '#999' : (isLow ? '#FF9800' : '#4CAF50')}; font-weight: bold;">
+                                ${locationData.count}
+                            </span>
+                        </p>
+                        <p><strong>Distance:</strong> ${locationData.distance.toFixed(1)} miles</p>
                     </div>
                 `
             });
@@ -1343,123 +1465,38 @@
                 .forEach(location => {
                     const item = document.createElement('div');
                     item.className = 'location-item';
-                    item.onclick = () => centerOnLocation(location);
                     
-                    const countClass = location.count === 0 ? 'zero' : location.count < 5 ? 'low' : '';
+                    const countClass = location.count === 0 ? 'zero' : 
+                                      location.count < 10 ? 'low' : '';
                     
                     item.innerHTML = `
                         <div>
                             <div class="location-name">${location.name}</div>
-                            <div style="font-size: 0.8rem; color: #666;">
-                                ${location.address}<br>
-                                ${location.distance.toFixed(1)} miles away
+                            <div style="font-size: 0.85rem; color: #666;">
+                                📍 ${location.distance.toFixed(1)} mi • ${location.address}
                             </div>
                         </div>
                         <div class="location-count ${countClass}">${location.count}</div>
                     `;
+                    
+                    item.addEventListener('click', () => {
+                        const marker = markers.find(m => 
+                            m.getTitle().includes(location.name)
+                        );
+                        if (marker) {
+                            map.setCenter(marker.getPosition());
+                            map.setZoom(15);
+                            google.maps.event.trigger(marker, 'click');
+                        }
+                    });
+                    
                     listContainer.appendChild(item);
                 });
         }
 
-        function centerOnLocation(location) {
-            map.setCenter(location.position);
-            map.setZoom(15);
-            
-            const marker = markers.find(m => 
-                m.getPosition().lat() === location.position.lat() &&
-                m.getPosition().lng() === location.position.lng()
-            );
-            
-            if (marker) {
-                google.maps.event.trigger(marker, 'click');
-            }
-        }
-
-        function fitMapToMarkers() {
-            if (markers.length === 0) return;
-            
-            const bounds = new google.maps.LatLngBounds();
-            markers.forEach(marker => bounds.extend(marker.getPosition()));
-            map.fitBounds(bounds);
-        }
-
-        // UI helper functions
-        function showSetupForm() {
-            document.getElementById('setupForm').classList.add('active');
-            document.getElementById('mainPanel').style.display = 'none';
-            
-            // Pre-fill current values
-            document.getElementById('apiKey').value = appState.apiKey;
-            document.getElementById('sheetId').value = appState.sheetId;
-            document.getElementById('range').value = appState.range;
-            document.getElementById('userId').value = appState.userId;
-            document.getElementById('mapStyle').value = appState.mapStyle;
-        }
-
-        function hideSetupForm() {
-            document.getElementById('setupForm').classList.remove('active');
-            document.getElementById('mainPanel').style.display = 'block';
-        }
-
-        function loadDemoConfig() {
-            document.getElementById('apiKey').value = 'DEMO_MODE';
-            document.getElementById('sheetId').value = 'demo';
-            document.getElementById('range').value = 'Sheet1!A:C';
-            document.getElementById('userId').value = 'demo_user';
-            showAlert('Demo configuration loaded!', 'success');
-        }
-
-        // Event listeners setup
-        function setupEventListeners() {
-            // Main panel buttons
-            document.getElementById('initBtn').addEventListener('click', initializeApp);
-            document.getElementById('qrBtn').addEventListener('click', generateQR);
-            document.getElementById('refreshBtn').addEventListener('click', refreshData);
-            document.getElementById('exportBtn').addEventListener('click', exportData);
-            document.getElementById('setupBtn').addEventListener('click', showSetupForm);
-            
-            // Setup form buttons
-            document.getElementById('saveBtn').addEventListener('click', saveConfiguration);
-            document.getElementById('cancelBtn').addEventListener('click', hideSetupForm);
-            document.getElementById('demoBtn').addEventListener('click', loadDemoConfig);
-            document.getElementById('clearBtn').addEventListener('click', clearAllData);
-            
-            // Theme toggle
-            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-            
-            // Auto-refresh
-            document.getElementById('autoRefresh').addEventListener('change', setupAutoRefresh);
-            
-            // Filter buttons
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
-            });
-            
-            // Map controls
-            document.getElementById('centerBtn').addEventListener('click', () => {
-                if (userLocation) {
-                    map.setCenter(userLocation);
-                    map.setZoom(12);
-                }
-            });
-            
-            document.getElementById('fitBtn').addEventListener('click', fitMapToMarkers);
-            
-            document.getElementById('satelliteBtn').addEventListener('click', () => {
-                mapType = mapType === 'roadmap' ? 'satellite' : 'roadmap';
-                map.setMapTypeId(mapType);
-            });
-        }
-
-        // Check for auto-start (QR code users)
-        function checkAutoStart() {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('autostart') === 'true';
-        }
-
         // Initialize app on load
         window.addEventListener('load', async () => {
-            console.log('🚀 DW Location Tracker v2.0 starting...');
+            console.log('🚀 DW Location Tracker v2.0 Starting...');
             updateStatus('Loading application...');
             
             // Load saved theme
@@ -1472,19 +1509,20 @@
             // Setup event listeners
             setupEventListeners();
             
-            // Check for auto-start
-            if (checkAutoStart()) {
-                console.log('Auto-start detected');
-                appState.apiKey = 'DEMO_MODE';
-                appState.sheetId = 'demo';
-                await initializeApp();
-            } else {
-                // Normal flow
-                const configLoaded = await loadConfiguration();
-                if (configLoaded) {
-                    updateStatus('Configuration loaded! Ready to initialize.');
-                } else {
-                    updateStatus('Welcome! Please configure your settings to begin.');
+            // Check for auto-start (QR users)
+            const autoStarted = await autoStartForQRUsers();
+            
+            if (!autoStarted) {
+                try {
+                    const configLoaded = await loadConfiguration();
+                    if (configLoaded) {
+                        updateStatus('Ready! Click Initialize to begin.');
+                    } else {
+                        updateStatus('Welcome! Please configure your settings.');
+                    }
+                } catch (error) {
+                    console.error('Startup error:', error);
+                    updateStatus('Please configure your API keys to begin.');
                 }
             }
         });
