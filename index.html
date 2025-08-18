@@ -956,16 +956,26 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
         }
 
         function initializeMap() {
+            console.log('Initializing map. API Key:', appState.apiKey);
+            console.log('Google Maps object exists:', !!window.google);
+            console.log('Google Maps API exists:', !!window.google?.maps);
+            console.log('MapTypeId exists:', !!window.google?.maps?.MapTypeId);
+            
             if (appState.apiKey === 'DEMO_MODE') {
+                console.log('Creating demo map...');
                 map = new google.maps.Map(document.getElementById('map'), {});
+                console.log('Demo map created successfully');
                 return;
             }
 
-            console.log('Initializing Google Maps with user location:', userLocation);
+            console.log('Creating real Google Maps with user location:', userLocation);
 
             // Check if Google Maps API is properly loaded
             if (!window.google || !window.google.maps || !window.google.maps.MapTypeId) {
                 console.error('Google Maps API not properly loaded');
+                console.error('google:', window.google);
+                console.error('google.maps:', window.google?.maps);
+                console.error('MapTypeId:', window.google?.maps?.MapTypeId);
                 updateStatus('Google Maps API Error - MapTypeId not found');
                 return;
             }
@@ -989,7 +999,7 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                     ]
                 });
 
-                console.log('Map initialized:', map);
+                console.log('Real map initialized:', map);
 
                 const userMarker = new google.maps.Marker({
                     position: userLocation,
