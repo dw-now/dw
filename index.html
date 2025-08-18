@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DW Location Tracker - Enhanced v2.0</title>
+    <title>DW Location Tracker - v2.1 with Sheets Integration</title>
     <style>
         * {
             margin: 0;
@@ -30,7 +30,6 @@
             position: relative;
         }
         
-        /* Dark mode styles */
         body.dark-mode {
             --primary-gradient: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
             --glass-bg: rgba(255, 255, 255, 0.05);
@@ -241,7 +240,7 @@
             background: rgba(255, 255, 255, 0.95);
             padding: 1rem;
             border-radius: 8px;
-            margin-top: 1rem;
+            margin: 1rem;
             box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
         
@@ -465,7 +464,6 @@
             background: rgba(255, 255, 255, 0.2);
         }
         
-        /* Mobile responsiveness */
         @media (max-width: 768px) {
             .config-panel, .setup-form {
                 margin: 0.5rem;
@@ -486,7 +484,6 @@
             }
         }
         
-        /* Loading overlay */
         .loading-overlay {
             position: fixed;
             top: 0;
@@ -512,7 +509,6 @@
             text-align: center;
         }
         
-        /* Pulse animation for live indicators */
         @keyframes pulse {
             0% {
                 box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
@@ -534,6 +530,29 @@
             animation: pulse 2s infinite;
             margin-left: 0.5rem;
         }
+        
+        /* Custom marker styles */
+        .custom-marker {
+            background: white;
+            border-radius: 8px;
+            padding: 4px 8px;
+            font-weight: bold;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        
+        .custom-marker::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 8px solid white;
+        }
     </style>
 </head>
 <body>
@@ -546,7 +565,7 @@
 
     <div class="header">
         <button class="theme-toggle" id="themeToggle">🌙 Dark</button>
-        <h1>🗺️ DW Location Tracker v2.0 <span class="live-indicator"></span></h1>
+        <h1>🗺️ DW Location Tracker v2.1 <span class="live-indicator"></span></h1>
         <div class="status" id="status">Loading configuration...</div>
     </div>
 
@@ -579,7 +598,7 @@
     <div class="config-panel" id="mainPanel">
         <div class="quick-start">
             <h4>🚀 Quick Start Guide</h4>
-            <p>Welcome to DW Location Tracker v2.0! Enhanced with real-time updates, filtering, and improved UI.</p>
+            <p>This version integrates with Google Sheets API to fetch your location data in real-time!</p>
         </div>
         
         <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
@@ -610,24 +629,22 @@
         </div>
         <div class="input-group">
             <label for="sheetId">Google Sheets ID:</label>
-            <input type="text" id="sheetId" placeholder="Enter your Google Sheets ID">
+            <input type="text" id="sheetId" placeholder="Enter your Google Sheets ID (from the URL)">
+            <small style="color: #666;">Find this in your sheet URL: docs.google.com/spreadsheets/d/[SHEET_ID]/edit</small>
         </div>
         <div class="input-group">
             <label for="range">Sheet Range:</label>
             <input type="text" id="range" value="Sheet1!A:C" placeholder="e.g., Sheet1!A:C">
+            <small style="color: #666;">Format: SheetName!StartCell:EndCell</small>
+        </div>
+        <div class="input-group">
+            <label for="sheetsApiKey">Google Sheets API Key (optional):</label>
+            <input type="password" id="sheetsApiKey" placeholder="Same as Maps API key if enabled">
+            <small style="color: #666;">Use the same API key if Sheets API is enabled for it</small>
         </div>
         <div class="input-group">
             <label for="userId">User ID:</label>
             <input type="text" id="userId" placeholder="Unique identifier">
-        </div>
-        <div class="input-group">
-            <label for="mapStyle">Map Style:</label>
-            <select id="mapStyle">
-                <option value="default">Default</option>
-                <option value="silver">Silver</option>
-                <option value="night">Night</option>
-                <option value="retro">Retro</option>
-            </select>
         </div>
         <button class="btn" id="saveBtn">💾 Save Configuration</button>
         <button class="btn btn-secondary" id="cancelBtn">❌ Cancel</button>
@@ -661,7 +678,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.7/umd.min.js"></script>
     <script>
-        // DW Location Tracker v2.0 - Enhanced Version
+        // DW Location Tracker v2.1 - With Google Sheets Integration
         
         // Global variables
         let map;
@@ -673,38 +690,19 @@
         let currentFilter = 'all';
         let mapType = 'roadmap';
         let autoRefreshInterval;
+        let advancedMarkersLoaded = false;
 
         // Supabase configuration
         const SUPABASE_URL = 'https://xjggcomfaarjfipmwjkc.supabase.co';
         const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqZ2djb21mYWFyamZpcG13amtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDAxODksImV4cCI6MjA3MDcxNjE4OX0.7YKku0E3SKDo_J4w6st7-jNsi4zCGmyALGsurx_Jlmc';
-
-        // Map styles
-        const mapStyles = {
-            silver: [
-                {elementType: 'geometry', stylers: [{color: '#f5f5f5'}]},
-                {elementType: 'labels.icon', stylers: [{visibility: 'off'}]},
-                {elementType: 'labels.text.fill', stylers: [{color: '#616161'}]},
-                {elementType: 'labels.text.stroke', stylers: [{color: '#f5f5f5'}]}
-            ],
-            night: [
-                {elementType: 'geometry', stylers: [{color: '#242f3e'}]},
-                {elementType: 'labels.text.stroke', stylers: [{color: '#242f3e'}]},
-                {elementType: 'labels.text.fill', stylers: [{color: '#746855'}]}
-            ],
-            retro: [
-                {elementType: 'geometry', stylers: [{color: '#ebe3cd'}]},
-                {elementType: 'labels.text.fill', stylers: [{color: '#523735'}]},
-                {elementType: 'labels.text.stroke', stylers: [{color: '#f5f1e6'}]}
-            ]
-        };
 
         // App state
         const appState = {
             apiKey: '',
             sheetId: '',
             range: 'Sheet1!A:C',
+            sheetsApiKey: '',
             userId: '',
-            mapStyle: 'default',
             initialized: false
         };
 
@@ -788,11 +786,18 @@
 
         function updateMarkers(data) {
             markers.forEach(marker => {
-                const shouldShow = data.some(d => 
-                    d.position.lat() === marker.getPosition().lat() &&
-                    d.position.lng() === marker.getPosition().lng()
-                );
-                marker.setVisible(shouldShow);
+                const shouldShow = data.some(d => {
+                    const markerPos = marker.position || marker.getPosition();
+                    const lat = typeof markerPos.lat === 'function' ? markerPos.lat() : markerPos.lat;
+                    const lng = typeof markerPos.lng === 'function' ? markerPos.lng() : markerPos.lng;
+                    return d.position.lat() === lat && d.position.lng() === lng;
+                });
+                
+                if (marker.setMap) {
+                    marker.setMap(shouldShow ? map : null);
+                } else if (marker.map) {
+                    marker.map = shouldShow ? map : null;
+                }
             });
         }
 
@@ -857,9 +862,8 @@
             
             const bounds = new google.maps.LatLngBounds();
             markers.forEach(marker => {
-                if (marker.getVisible()) {
-                    bounds.extend(marker.getPosition());
-                }
+                const pos = marker.position || marker.getPosition();
+                bounds.extend(pos);
             });
             map.fitBounds(bounds);
         }
@@ -869,40 +873,17 @@
             map.setMapTypeId(mapType);
         }
 
-        // Check if this is an auto-start session
-        function checkAutoStart() {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('autostart') === 'true';
-        }
-
-        // Auto-start for QR users
-        async function autoStartForQRUsers() {
-            if (!checkAutoStart()) return false;
-            
-            updateStatus('Auto-starting for QR code user...');
-            document.getElementById('mainPanel').style.display = 'none';
-            document.getElementById('setupForm').style.display = 'none';
-            
-            try {
-                appState.apiKey = 'DEMO_MODE';
-                appState.sheetId = 'demo';
-                appState.range = 'Sheet1!A:C';
-                appState.userId = 'qr_user';
-                
-                await initializeApp();
-                showAlert('Welcome! Showing demo DW locations near you. 📍', 'info');
-                return true;
-            } catch (error) {
-                console.error('Auto-start failed:', error);
-                updateStatus('Unable to load locations');
-                return false;
-            }
-        }
-
         // Main functions
         async function showSetupForm() {
             document.getElementById('setupForm').classList.add('active');
             document.getElementById('mainPanel').style.display = 'none';
+            
+            // Load existing values if available
+            if (appState.apiKey) document.getElementById('apiKey').value = appState.apiKey;
+            if (appState.sheetId) document.getElementById('sheetId').value = appState.sheetId;
+            if (appState.range) document.getElementById('range').value = appState.range;
+            if (appState.sheetsApiKey) document.getElementById('sheetsApiKey').value = appState.sheetsApiKey;
+            if (appState.userId) document.getElementById('userId').value = appState.userId;
         }
 
         async function hideSetupForm() {
@@ -914,8 +895,8 @@
             document.getElementById('apiKey').value = 'DEMO_MODE';
             document.getElementById('sheetId').value = 'demo';
             document.getElementById('range').value = 'Sheet1!A:C';
+            document.getElementById('sheetsApiKey').value = '';
             document.getElementById('userId').value = 'demo_user';
-            document.getElementById('mapStyle').value = 'default';
             showAlert('Demo configuration loaded!', 'success');
         }
 
@@ -923,8 +904,8 @@
             const apiKey = document.getElementById('apiKey').value.trim();
             const sheetId = document.getElementById('sheetId').value.trim();
             const range = document.getElementById('range').value.trim();
+            const sheetsApiKey = document.getElementById('sheetsApiKey').value.trim() || apiKey;
             const userId = document.getElementById('userId').value.trim() || 'default_user';
-            const mapStyle = document.getElementById('mapStyle').value;
 
             if (!apiKey) {
                 showAlert('Please provide a Google Maps API Key', 'error');
@@ -936,7 +917,7 @@
                 google_maps_api_key: apiKey,
                 google_sheets_id: sheetId,
                 sheet_range: range,
-                map_style: mapStyle,
+                sheets_api_key: sheetsApiKey,
                 updated_at: new Date().toISOString()
             };
 
@@ -954,8 +935,8 @@
                 appState.apiKey = apiKey;
                 appState.sheetId = sheetId;
                 appState.range = range;
+                appState.sheetsApiKey = sheetsApiKey;
                 appState.userId = userId;
-                appState.mapStyle = mapStyle;
 
                 hideSetupForm();
                 updateStatus('Configuration saved! Ready to initialize.');
@@ -1098,8 +1079,8 @@
                             google_maps_api_key: apiKey,
                             google_sheets_id: localStorage.getItem('google_sheets_id') || '',
                             sheet_range: localStorage.getItem('sheet_range') || 'Sheet1!A:C',
-                            user_id: localStorage.getItem('user_id') || 'default_user',
-                            map_style: localStorage.getItem('map_style') || 'default'
+                            sheets_api_key: localStorage.getItem('sheets_api_key') || apiKey,
+                            user_id: localStorage.getItem('user_id') || 'default_user'
                         };
                     }
                 }
@@ -1108,12 +1089,10 @@
                     appState.apiKey = config.google_maps_api_key;
                     appState.sheetId = config.google_sheets_id || '';
                     appState.range = config.sheet_range || 'Sheet1!A:C';
+                    appState.sheetsApiKey = config.sheets_api_key || config.google_maps_api_key;
                     appState.userId = config.user_id || 'default_user';
-                    appState.mapStyle = config.map_style || 'default';
                     
-                    if (!checkAutoStart()) {
-                        updateStatus('Configuration loaded! Click "Initialize App" to start.');
-                    }
+                    updateStatus('Configuration loaded! Click "Initialize App" to start.');
                     return true;
                 }
 
@@ -1121,9 +1100,7 @@
                 console.error('Error loading configuration:', error);
             }
 
-            if (!checkAutoStart()) {
-                updateStatus('No saved configuration. Please configure settings.');
-            }
+            updateStatus('No saved configuration. Please configure settings.');
             return false;
         }
 
@@ -1140,12 +1117,17 @@
                     return;
                 }
 
-                // For real API key, load Google Maps
+                // Create callback function
+                window.initMapCallback = () => {
+                    resolve();
+                    delete window.initMapCallback;
+                };
+
+                // Load Google Maps with async loading pattern
                 const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}`;
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&callback=initMapCallback&libraries=marker&loading=async`;
                 script.async = true;
                 script.defer = true;
-                script.onload = resolve;
                 script.onerror = () => reject(new Error('Failed to load Google Maps'));
                 document.head.appendChild(script);
             });
@@ -1160,9 +1142,6 @@
                                 <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: white;">
                                     <h2>📍 Demo Map Mode</h2>
                                     <p>Locations are being tracked</p>
-                                    <div style="margin-top: 20px;">
-                                        <div class="spinner" style="border-color: rgba(255,255,255,0.3); border-top-color: white;"></div>
-                                    </div>
                                 </div>
                             </div>
                         `;
@@ -1172,24 +1151,15 @@
                         this.setZoom = () => {};
                         this.setCenter = () => {};
                         this.setMapTypeId = () => {};
-                        this.addListener = () => {};
                         return this;
                     },
                     Marker: function(options) {
-                        this.options = options;
-                        this.visible = true;
-                        this.addListener = () => {};
+                        this.position = options.position;
                         this.setMap = () => {};
-                        this.setVisible = (v) => { this.visible = v; };
-                        this.getVisible = () => this.visible;
-                        this.getPosition = () => ({ 
-                            lat: () => options.position?.lat || 34.0522, 
-                            lng: () => options.position?.lng || -118.2437 
-                        });
-                        this.getTitle = () => options.title;
+                        this.getPosition = () => this.position;
                         return this;
                     },
-                    InfoWindow: function(options) {
+                    InfoWindow: function() {
                         this.open = () => {};
                         this.close = () => {};
                         return this;
@@ -1200,10 +1170,7 @@
                         return this;
                     },
                     LatLngBounds: function() { 
-                        return { 
-                            extend: () => {},
-                            fitBounds: () => {}
-                        }; 
+                        return { extend: () => {} }; 
                     },
                     Geocoder: function() {
                         return {
@@ -1220,15 +1187,11 @@
                     },
                     geometry: {
                         spherical: {
-                            computeDistanceBetween: () => Math.random() * 10 * 1609.34
+                            computeDistanceBetween: (from, to) => Math.random() * 10 * 1609.34
                         }
                     },
                     SymbolPath: { CIRCLE: 0 },
-                    Animation: { DROP: 1, BOUNCE: 2 },
-                    event: {
-                        addListenerOnce: (map, event, callback) => setTimeout(callback, 100),
-                        addListener: () => {}
-                    }
+                    Animation: { DROP: 1 }
                 }
             };
         }
@@ -1246,6 +1209,7 @@
                             resolve();
                         },
                         () => {
+                            // Default to Los Angeles
                             userLocation = { lat: 34.0522, lng: -118.2437 };
                             initializeMap();
                             resolve();
@@ -1260,34 +1224,84 @@
         }
 
         function initializeMap() {
-            const mapOptions = {
+            map = new google.maps.Map(document.getElementById('map'), {
                 zoom: 12,
                 center: userLocation,
                 mapTypeId: mapType,
-                styles: appState.mapStyle !== 'default' ? mapStyles[appState.mapStyle] : []
-            };
-            
-            map = new google.maps.Map(document.getElementById('map'), mapOptions);
+                mapId: 'dw_tracker_map' // Required for AdvancedMarkerElement
+            });
             
             // Add user location marker
-            new google.maps.Marker({
-                position: userLocation,
-                map: map,
-                title: 'Your Location',
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    scale: 8,
-                    fillColor: '#4285F4',
-                    fillOpacity: 1,
-                    strokeColor: '#ffffff',
-                    strokeWeight: 2
-                }
-            });
+            if (window.google.maps.marker?.AdvancedMarkerElement) {
+                const userMarker = new google.maps.marker.AdvancedMarkerElement({
+                    map: map,
+                    position: userLocation,
+                    title: 'Your Location',
+                    content: buildUserMarkerContent()
+                });
+                advancedMarkersLoaded = true;
+            } else {
+                // Fallback to regular marker
+                new google.maps.Marker({
+                    position: userLocation,
+                    map: map,
+                    title: 'Your Location',
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        scale: 8,
+                        fillColor: '#4285F4',
+                        fillOpacity: 1,
+                        strokeColor: '#ffffff',
+                        strokeWeight: 2
+                    }
+                });
+            }
         }
 
+        function buildUserMarkerContent() {
+            const div = document.createElement('div');
+            div.innerHTML = `
+                <div style="background: #4285F4; color: white; padding: 8px; border-radius: 50%; border: 2px solid white;">
+                    📍
+                </div>
+            `;
+            return div;
+        }
+
+        // Google Sheets API integration
         async function loadSheetsData() {
-            // For demo, load demo data
-            await loadDemoData();
+            if (!appState.sheetId || !appState.sheetsApiKey) {
+                console.log('Missing Sheets configuration, loading demo data');
+                await loadDemoData();
+                return;
+            }
+
+            try {
+                const url = `https://sheets.googleapis.com/v4/spreadsheets/${appState.sheetId}/values/${appState.range}?key=${appState.sheetsApiKey}`;
+                
+                const response = await fetch(url);
+                if (!response.ok) {
+                    throw new Error(`Sheets API error: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.values && data.values.length > 0) {
+                    // Skip header row if present
+                    const hasHeader = isNaN(parseInt(data.values[0][2]));
+                    const dataRows = hasHeader ? data.values.slice(1) : data.values;
+                    
+                    await processLocationsData(dataRows);
+                    showAlert(`Loaded ${dataRows.length} locations from Google Sheets`, 'success');
+                } else {
+                    showAlert('No data found in the specified range', 'warning');
+                    await loadDemoData();
+                }
+            } catch (error) {
+                console.error('Error loading Sheets data:', error);
+                showAlert('Failed to load Sheets data, using demo data', 'warning');
+                await loadDemoData();
+            }
         }
 
         async function loadDemoData() {
@@ -1322,27 +1336,29 @@
             for (let i = 0; i < data.length; i++) {
                 const row = data[i];
                 
-                if (row.length >= 3) {
+                if (row && row.length >= 3) {
                     const [name, address, count] = row;
                     
-                    try {
-                        const location = await geocodeAddress(geocoder, address);
-                        const distance = calculateDistance(userLocation, location);
-                        
-                        const locationData = {
-                            name,
-                            address,
-                            count: parseInt(count) || 0,
-                            position: location,
-                            distance
-                        };
+                    if (name && address) {
+                        try {
+                            const location = await geocodeAddress(geocoder, address);
+                            const distance = calculateDistance(userLocation, location);
+                            
+                            const locationData = {
+                                name: name.toString().trim(),
+                                address: address.toString().trim(),
+                                count: parseInt(count) || 0,
+                                position: location,
+                                distance: distance
+                            };
 
-                        sheetsData.push(locationData);
-                        createMarker(locationData);
-                        successCount++;
-                        
-                    } catch (error) {
-                        console.error(`Failed to geocode "${address}":`, error);
+                            sheetsData.push(locationData);
+                            createMarker(locationData);
+                            successCount++;
+                            
+                        } catch (error) {
+                            console.error(`Failed to geocode "${address}":`, error);
+                        }
                     }
                 }
                 
@@ -1365,8 +1381,7 @@
             }
             
             const fromLatLng = new google.maps.LatLng(from.lat, from.lng);
-            const toLatLng = to;
-            const distance = google.maps.geometry.spherical.computeDistanceBetween(fromLatLng, toLatLng);
+            const distance = google.maps.geometry.spherical.computeDistanceBetween(fromLatLng, to);
             return distance / 1609.34; // Convert to miles
         }
 
@@ -1386,21 +1401,35 @@
             const isZero = locationData.count === 0;
             const isLow = locationData.count > 0 && locationData.count <= 5;
             
-            const marker = new google.maps.Marker({
-                position: locationData.position,
-                map: map,
-                title: `${locationData.name} (${locationData.count} available)`,
-                animation: google.maps.Animation.DROP,
-                icon: {
-                    url: `data:image/svg+xml,${encodeURIComponent(`
-                        <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
-                            <circle cx="20" cy="20" r="18" fill="${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'}" stroke="white" stroke-width="2"/>
-                            <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="bold">${locationData.count}</text>
-                        </svg>
-                    `)}`,
-                    scaledSize: new google.maps.Size(40, 40)
-                }
-            });
+            let marker;
+            
+            if (advancedMarkersLoaded && window.google.maps.marker?.AdvancedMarkerElement) {
+                // Use AdvancedMarkerElement
+                const content = buildMarkerContent(locationData, isZero, isLow);
+                marker = new google.maps.marker.AdvancedMarkerElement({
+                    map: map,
+                    position: locationData.position,
+                    title: `${locationData.name} (${locationData.count} available)`,
+                    content: content
+                });
+            } else {
+                // Fallback to regular Marker
+                marker = new google.maps.Marker({
+                    position: locationData.position,
+                    map: map,
+                    title: `${locationData.name} (${locationData.count} available)`,
+                    animation: google.maps.Animation.DROP,
+                    icon: {
+                        url: `data:image/svg+xml,${encodeURIComponent(`
+                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
+                                <circle cx="20" cy="20" r="18" fill="${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'}" stroke="white" stroke-width="2"/>
+                                <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="bold">${locationData.count}</text>
+                            </svg>
+                        `)}`,
+                        scaledSize: new google.maps.Size(40, 40)
+                    }
+                });
+            }
 
             const infoWindow = new google.maps.InfoWindow({
                 content: `
@@ -1423,16 +1452,38 @@
                 `
             });
 
-            marker.addListener('click', () => {
-                infoWindow.open(map, marker);
-            });
+            if (advancedMarkersLoaded) {
+                marker.addListener('click', () => {
+                    infoWindow.open(map, marker);
+                });
+            } else {
+                marker.addListener('click', () => {
+                    infoWindow.open(map, marker);
+                });
+            }
 
             markers.push(marker);
             return marker;
         }
 
+        function buildMarkerContent(locationData, isZero, isLow) {
+            const div = document.createElement('div');
+            const color = isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50';
+            div.className = 'custom-marker';
+            div.style.background = color;
+            div.style.color = 'white';
+            div.innerHTML = locationData.count.toString();
+            return div;
+        }
+
         function clearMarkers() {
-            markers.forEach(marker => marker.setMap(null));
+            markers.forEach(marker => {
+                if (marker.setMap) {
+                    marker.setMap(null);
+                } else if (marker.map) {
+                    marker.map = null;
+                }
+            });
             markers = [];
         }
 
@@ -1446,12 +1497,14 @@
                     const item = document.createElement('div');
                     item.className = 'location-item';
                     item.onclick = () => {
-                        const marker = markers.find(m => 
-                            m.getPosition().lat() === location.position.lat() &&
-                            m.getPosition().lng() === location.position.lng()
-                        );
+                        const marker = markers.find(m => {
+                            const pos = m.position || m.getPosition();
+                            const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
+                            const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
+                            return location.position.lat() === lat && location.position.lng() === lng;
+                        });
                         if (marker) {
-                            map.setCenter(marker.getPosition());
+                            map.setCenter(location.position);
                             map.setZoom(15);
                             google.maps.event.trigger(marker, 'click');
                         }
@@ -1506,25 +1559,21 @@
 
         // Initialize app on load
         window.addEventListener('load', async () => {
-            console.log('🚀 DW Location Tracker v2.0 starting...');
+            console.log('🚀 DW Location Tracker v2.1 starting...');
             updateStatus('Loading application...');
             
             setupEventListeners();
             
-            const autoStarted = await autoStartForQRUsers();
-            
-            if (!autoStarted) {
-                try {
-                    const configLoaded = await loadConfiguration();
-                    if (configLoaded) {
-                        updateStatus('Ready! Click "Initialize App" to start tracking.');
-                    } else {
-                        updateStatus('Welcome! Please configure settings to begin.');
-                    }
-                } catch (error) {
-                    console.error('Startup error:', error);
-                    updateStatus('Ready for configuration.');
+            try {
+                const configLoaded = await loadConfiguration();
+                if (configLoaded) {
+                    updateStatus('Ready! Click "Initialize App" to start tracking.');
+                } else {
+                    updateStatus('Welcome! Please configure settings to begin.');
                 }
+            } catch (error) {
+                console.error('Startup error:', error);
+                updateStatus('Ready for configuration.');
             }
         });
     </script>
