@@ -294,10 +294,10 @@
             <p>Your API keys are automatically loaded from Supabase. Click "Initialize App" to start tracking locations!</p>
         </div>
         
-        <button class="btn" onclick="initializeApp()" id="initBtn">🚀 Initialize App</button>
-        <button class="btn btn-secondary" onclick="generateQR()" id="qrBtn" disabled>📱 Generate QR Code</button>
-        <button class="btn btn-secondary" onclick="refreshData()" id="refreshBtn" disabled>🔄 Refresh Data</button>
-        <button class="btn btn-danger" onclick="showSetupForm()">⚙️ Update Configuration</button>
+        <button class="btn" id="initBtn">🚀 Initialize App</button>
+        <button class="btn btn-secondary" id="qrBtn" disabled>📱 Generate QR Code</button>
+        <button class="btn btn-secondary" id="refreshBtn" disabled>🔄 Refresh Data</button>
+        <button class="btn btn-danger" id="setupBtn">⚙️ Update Configuration</button>
     </div>
 
     <div class="setup-form" id="setupForm">
@@ -318,9 +318,9 @@
             <label for="userId">User ID (optional):</label>
             <input type="text" id="userId" placeholder="Unique identifier for your setup">
         </div>
-        <button class="btn" onclick="saveConfiguration()">💾 Save Configuration</button>
-        <button class="btn btn-secondary" onclick="hideSetupForm()">❌ Cancel</button>
-        <button class="btn btn-secondary" onclick="loadDemoConfig()">🎮 Load Demo Config</button>
+        <button class="btn" id="saveBtn">💾 Save Configuration</button>
+        <button class="btn btn-secondary" id="cancelBtn">❌ Cancel</button>
+        <button class="btn btn-secondary" id="demoBtn">🎮 Load Demo Config</button>
     </div>
 
     <div id="loadingDiv" class="loading" style="display: none;">
@@ -348,6 +348,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.7/umd.min.js"></script>
     <script>
+        // Global variables
         let map;
         let markers = [];
         let userLocation = null;
@@ -377,6 +378,7 @@
             console.log('Supabase not configured, running in demo mode');
         }
 
+        // Utility functions
         function showAlert(message, type = 'info') {
             const alertDiv = document.getElementById('alertDiv');
             alertDiv.textContent = message;
@@ -392,25 +394,26 @@
             document.getElementById('status').textContent = message;
         }
 
-        function showSetupForm() {
+        // Global functions (accessible from HTML onclick)
+        window.showSetupForm = function() {
             document.getElementById('setupForm').classList.add('active');
             document.getElementById('mainPanel').style.display = 'none';
-        }
+        };
 
-        function hideSetupForm() {
+        window.hideSetupForm = function() {
             document.getElementById('setupForm').classList.remove('active');
             document.getElementById('mainPanel').style.display = 'block';
-        }
+        };
 
-        function loadDemoConfig() {
+        window.loadDemoConfig = function() {
             document.getElementById('apiKey').value = 'DEMO_MODE';
             document.getElementById('sheetId').value = 'demo';
             document.getElementById('range').value = 'Sheet1!A:C';
             document.getElementById('userId').value = 'demo_user';
             showAlert('Demo configuration loaded! Click "Save Configuration" to continue.', 'success');
-        }
+        };
 
-        async function saveConfiguration() {
+        window.saveConfiguration = async function() {
             const apiKey = document.getElementById('apiKey').value.trim();
             const sheetId = document.getElementById('sheetId').value.trim();
             const range = document.getElementById('range').value.trim();
@@ -487,60 +490,9 @@ Ready to initialize!`, 'success');
                 console.error('Error saving configuration:', error);
                 showAlert('Failed to save configuration: ' + error.message, 'error');
             }
-        }
+        };
 
-        async function loadConfiguration() {
-            try {
-                let config = null;
-
-                if (supabase) {
-                    updateStatus('Loading configuration from Supabase...');
-                    
-                    const { data, error } = await supabase
-                        .from('app_configurations')
-                        .select('*')
-                        .order('updated_at', { ascending: false })
-                        .limit(1);
-
-                    if (error) throw error;
-                    
-                    if (data && data.length > 0) {
-                        config = data[0];
-                        showAlert('Configuration loaded from Supabase!', 'success');
-                    }
-                } else {
-                    const apiKey = localStorage.getItem('google_maps_api_key');
-                    if (apiKey) {
-                        config = {
-                            google_maps_api_key: apiKey,
-                            google_sheets_id: localStorage.getItem('google_sheets_id') || '',
-                            sheet_range: localStorage.getItem('sheet_range') || 'Sheet1!A:C',
-                            user_id: localStorage.getItem('user_id') || 'default_user'
-                        };
-                        showAlert('Configuration loaded from local storage', 'info');
-                    }
-                }
-
-                if (config) {
-                    appState.apiKey = config.google_maps_api_key;
-                    appState.sheetId = config.google_sheets_id || '';
-                    appState.range = config.sheet_range || 'Sheet1!A:C';
-                    appState.userId = config.user_id || 'default_user';
-                    
-                    updateStatus('Configuration loaded! Click "Initialize App" to start.');
-                    return true;
-                }
-
-            } catch (error) {
-                console.error('Error loading configuration:', error);
-            }
-
-            updateStatus('No saved configuration found. Please set up your API keys.');
-            showAlert('Welcome! Please click "Update Configuration" to set up your API keys.', 'info');
-            return false;
-        }
-
-        async function initializeApp() {
+        window.initializeApp = async function() {
             if (!appState.apiKey) {
                 showAlert('Please configure your API keys first', 'error');
                 showSetupForm();
@@ -606,6 +558,112 @@ Ready to initialize!`, 'success');
                     showAlert('Initialization failed: ' + error.message, 'error');
                 }
             }
+        };
+
+        window.generateQR = function() {
+            let shareableUrl = window.location.href;
+            
+            if (shareableUrl.includes('localhost') || shareableUrl.includes('127.0.0.1') || shareableUrl.includes('file://')) {
+                showAlert('Local URLs cannot be accessed by other devices. To make this work:\n\n1. Deploy to a web server (Netlify, Vercel, GitHub Pages)\n2. Use ngrok for temporary public URL\n3. Or share the HTML file directly', 'error');
+                shareableUrl = 'https://your-app-domain.com/dw-location-tracker';
+            }
+            
+            const qrContainer = document.getElementById('qrContainer');
+            const qrCodeDiv = document.getElementById('qrCode');
+            
+            qrCodeDiv.innerHTML = '';
+            
+            new QRCode(qrCodeDiv, {
+                text: shareableUrl,
+                width: 200,
+                height: 200,
+                colorDark: '#000000',
+                colorLight: '#ffffff'
+            });
+            
+            qrContainer.style.display = 'block';
+            showAlert('QR code generated! Users can scan this to access the map on their mobile devices.', 'success');
+        };
+
+        window.refreshData = async function() {
+            if (!appState.initialized) {
+                showAlert('Please initialize the app first', 'error');
+                return;
+            }
+
+            try {
+                updateStatus('Refreshing data...');
+                if (appState.sheetId && appState.sheetId !== 'demo') {
+                    await loadSheetsData();
+                } else {
+                    await loadDemoData();
+                }
+                showAlert('Data refreshed successfully!', 'success');
+            } catch (error) {
+                showAlert('Failed to refresh data: ' + error.message, 'error');
+            }
+        };
+
+        // Event listeners setup
+        function setupEventListeners() {
+            document.getElementById('initBtn').addEventListener('click', initializeApp);
+            document.getElementById('qrBtn').addEventListener('click', generateQR);
+            document.getElementById('refreshBtn').addEventListener('click', refreshData);
+            document.getElementById('setupBtn').addEventListener('click', showSetupForm);
+            document.getElementById('saveBtn').addEventListener('click', saveConfiguration);
+            document.getElementById('cancelBtn').addEventListener('click', hideSetupForm);
+            document.getElementById('demoBtn').addEventListener('click', loadDemoConfig);
+        }
+
+        async function loadConfiguration() {
+            try {
+                let config = null;
+
+                if (supabase) {
+                    updateStatus('Loading configuration from Supabase...');
+                    
+                    const { data, error } = await supabase
+                        .from('app_configurations')
+                        .select('*')
+                        .order('updated_at', { ascending: false })
+                        .limit(1);
+
+                    if (error) throw error;
+                    
+                    if (data && data.length > 0) {
+                        config = data[0];
+                        showAlert('Configuration loaded from Supabase!', 'success');
+                    }
+                } else {
+                    const apiKey = localStorage.getItem('google_maps_api_key');
+                    if (apiKey) {
+                        config = {
+                            google_maps_api_key: apiKey,
+                            google_sheets_id: localStorage.getItem('google_sheets_id') || '',
+                            sheet_range: localStorage.getItem('sheet_range') || 'Sheet1!A:C',
+                            user_id: localStorage.getItem('user_id') || 'default_user'
+                        };
+                        showAlert('Configuration loaded from local storage', 'info');
+                    }
+                }
+
+                if (config) {
+                    appState.apiKey = config.google_maps_api_key;
+                    appState.sheetId = config.google_sheets_id || '';
+                    appState.range = config.sheet_range || 'Sheet1!A:C';
+                    appState.userId = config.user_id || 'default_user';
+                    
+                    updateStatus('Configuration loaded! Click "Initialize App" to start.');
+                    return true;
+                }
+
+            } catch (error) {
+                console.error('Error loading configuration:', error);
+            }
+
+            updateStatus('No saved configuration found. Please set up your API keys.');
+            showAlert('Welcome! Please click "Update Configuration" to set up your API keys.', 'info');
+            return false;
         }
 
         async function switchToDemoMode() {
@@ -1428,53 +1486,12 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                 });
         }
 
-        async function refreshData() {
-            if (!appState.initialized) {
-                showAlert('Please initialize the app first', 'error');
-                return;
-            }
-
-            try {
-                updateStatus('Refreshing data...');
-                if (appState.sheetId && appState.sheetId !== 'demo') {
-                    await loadSheetsData();
-                } else {
-                    await loadDemoData();
-                }
-                showAlert('Data refreshed successfully!', 'success');
-            } catch (error) {
-                showAlert('Failed to refresh data: ' + error.message, 'error');
-            }
-        }
-
-        function generateQR() {
-            let shareableUrl = window.location.href;
-            
-            if (shareableUrl.includes('localhost') || shareableUrl.includes('127.0.0.1') || shareableUrl.includes('file://')) {
-                showAlert('Local URLs cannot be accessed by other devices. To make this work:\n\n1. Deploy to a web server (Netlify, Vercel, GitHub Pages)\n2. Use ngrok for temporary public URL\n3. Or share the HTML file directly', 'error');
-                shareableUrl = 'https://your-app-domain.com/dw-location-tracker';
-            }
-            
-            const qrContainer = document.getElementById('qrContainer');
-            const qrCodeDiv = document.getElementById('qrCode');
-            
-            qrCodeDiv.innerHTML = '';
-            
-            new QRCode(qrCodeDiv, {
-                text: shareableUrl,
-                width: 200,
-                height: 200,
-                colorDark: '#000000',
-                colorLight: '#ffffff'
-            });
-            
-            qrContainer.style.display = 'block';
-            showAlert('QR code generated! Users can scan this to access the map on their mobile devices.', 'success');
-        }
-
         // Initialize app on load
         window.addEventListener('load', async () => {
             updateStatus('Loading application...');
+            
+            // Setup event listeners for all buttons
+            setupEventListeners();
             
             try {
                 const configLoaded = await loadConfiguration();
