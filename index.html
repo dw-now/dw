@@ -1686,4 +1686,31 @@ Example: Type "debugMarkers()" and press Enter to see marker info.
     </script>
 </body>
 </html>
-                                  
+                                    if (infoDiv.parentNode) infoDiv.remove();
+                                }, 5000);
+                            }
+                        };
+                        this.setContent = (content) => {
+                            this.content = content;
+                        };
+                        this.close = () => {};
+                        return this;
+                    },
+                    LatLng: function(lat, lng) { 
+                        return { 
+                            lat: () => lat, 
+                            lng: () => lng,
+                            lat: lat,
+                            lng: lng
+                        }; 
+                    },
+                    LatLngBounds: function() { 
+                        return { 
+                            extend: () => {},
+                            contains: () => true
+                        }; 
+                    },
+                    Geocoder: function() {
+                        return {
+                            geocode: (request, callback) => {
+                                setTimeout(() => {
