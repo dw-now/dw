@@ -366,7 +366,9 @@
          * - ReferenceError: showSetupForm is not defined ✅
          * - All event handlers properly attached ✅
          * - Global function scope issues resolved ✅
+         * - Syntax errors fixed ✅
          */
+
         // Global variables
         let map;
         let markers = [];
@@ -411,6 +413,101 @@
 
         function updateStatus(message) {
             document.getElementById('status').textContent = message;
+        }
+
+        // Check if this is an auto-start session (from QR code)
+        function checkAutoStart() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const isAutoStart = urlParams.get('autostart') === 'true';
+            console.log('🔍 Checking auto-start:', {
+                url: window.location.href,
+                searchParams: window.location.search,
+                autostart: urlParams.get('autostart'),
+                isAutoStart: isAutoStart
+            });
+            return isAutoStart;
+        }
+
+        // Auto-start function for QR code users
+        async function autoStartForQRUsers() {
+            if (!checkAutoStart()) return false;
+            
+            console.log('🚀 Starting auto-start for QR code user...');
+            updateStatus('Auto-starting for QR code user...');
+            
+            // Hide config panel and show minimal loading
+            document.getElementById('mainPanel').style.display = 'none';
+            document.getElementById('setupForm').style.display = 'none';
+            
+            // Show simplified header for mobile users
+            const header = document.querySelector('.header');
+            header.innerHTML = `
+                <h1>🗺️ DW Locations Near You</h1>
+                <div class="status" id="status">Loading your local DW locations...</div>
+            `;
+            
+            try {
+                // Try to load saved configuration first
+                let configLoaded = false;
+                
+                try {
+                    configLoaded = await loadConfiguration();
+                } catch (configError) {
+                    console.log('No saved config found, using demo mode');
+                }
+                
+                // If no config is found, force demo mode for QR users
+                if (!configLoaded || !appState.apiKey) {
+                    console.log('Forcing demo mode for QR code user');
+                    appState.apiKey = 'DEMO_MODE';
+                    appState.sheetId = 'demo';
+                    appState.range = 'Sheet1!A:C';
+                    appState.userId = 'qr_user';
+                    
+                    updateStatus('Setting up demo locations...');
+                }
+                
+                // Force initialization regardless of config status
+                await initializeApp();
+                
+                // Success message based on mode
+                if (appState.apiKey === 'DEMO_MODE') {
+                    showAlert('Welcome! Showing demo DW locations near you. 📍', 'info');
+                } else {
+                    showAlert('Welcome! Showing all DW locations within 3 miles of you. 📍', 'success');
+                }
+                
+                return true;
+                
+            } catch (error) {
+                console.error('Auto-start failed:', error);
+                
+                // Even if everything fails, try demo mode as last resort
+                try {
+                    updateStatus('Loading demo locations...');
+                    appState.apiKey = 'DEMO_MODE';
+                    appState.sheetId = 'demo';
+                    await initializeApp();
+                    showAlert('Welcome! Showing demo DW locations. 📍', 'info');
+                    return true;
+                } catch (demoError) {
+                    console.error('Demo mode also failed:', demoError);
+                    
+                    // Show simplified error for mobile users
+                    updateStatus('Unable to load locations');
+                    showAlert('Unable to load locations. Please try refreshing the page.', 'error');
+                    
+                    // Show a simple retry button
+                    const retryBtn = document.createElement('button');
+                    retryBtn.className = 'btn';
+                    retryBtn.textContent = '🔄 Retry';
+                    retryBtn.style.cssText = 'margin: 1rem; display: block; margin-left: auto; margin-right: auto;';
+                    retryBtn.onclick = () => window.location.reload();
+                    document.body.appendChild(retryBtn);
+                    
+                    return false;
+                }
+            }
         }
 
         // Global functions (accessible from HTML onclick)
@@ -628,110 +725,8 @@ Ready to initialize!`, 'success');
             }
         };
 
-        // Check if this is an auto-start session (from QR code)
-        function checkAutoStart() {
-            const urlParams = new URLSearchParams(window.location.search);
-            const isAutoStart = urlParams.get('autostart') === 'true';
-            console.log('🔍 Checking auto-start:', {
-                url: window.location.href,
-                searchParams: window.location.search,
-                autostart: urlParams.get('autostart'),
-                isAutoStart: isAutoStart
-            });
-            return isAutoStart;
-        }
-
-        // Auto-start function for QR code users
-        async function autoStartForQRUsers() {
-            if (!checkAutoStart()) return false;
-            
-            updateStatus('Auto-starting for QR code user...');
-            
-            // Hide config panel and show minimal loading
-            document.getElementById('mainPanel').style.display = 'none';
-            document.getElementById('setupForm').style.display = 'none';
-            
-            // Show simplified header for mobile users
-            const header = document.querySelector('.header');
-            header.innerHTML = `
-                <h1>🗺️ DW Locations Near You</h1>
-                <div class="status" id="status">Loading your local DW locations...</div>
-            `;
-            
-            try {
-                // Try to load saved configuration first
-                let configLoaded = false;
-                
-                try {
-                    configLoaded = await loadConfiguration();
-                } catch (configError) {
-                    console.log('No saved config found, using demo mode');
-                }
-                
-                // If no config is found, force demo mode for QR users
-                if (!configLoaded || !appState.apiKey) {
-                    console.log('Forcing demo mode for QR code user');
-                    appState.apiKey = 'DEMO_MODE';
-                    appState.sheetId = 'demo';
-                    appState.range = 'Sheet1!A:C';
-                    appState.userId = 'qr_user';
-                    
-                    updateStatus('Setting up demo locations...');
-                }
-                
-                // Force initialization regardless of config status
-                await initializeApp();
-                
-                // Success message based on mode
-                if (appState.apiKey === 'DEMO_MODE') {
-                    showAlert('Welcome! Showing demo DW locations near you. 📍', 'info');
-                } else {
-                    showAlert('Welcome! Showing all DW locations within 3 miles of you. 📍', 'success');
-                }
-                
-                return true;
-                
-            } catch (error) {
-                console.error('Auto-start failed:', error);
-                
-                // Even if everything fails, try demo mode as last resort
-                try {
-                    updateStatus('Loading demo locations...');
-                    appState.apiKey = 'DEMO_MODE';
-                    appState.sheetId = 'demo';
-                    await initializeApp();
-                    showAlert('Welcome! Showing demo DW locations. 📍', 'info');
-                    return true;
-                } catch (demoError) {
-                    console.error('Demo mode also failed:', demoError);
-                    
-                    // Show simplified error for mobile users
-                    updateStatus('Unable to load locations');
-                    showAlert('Unable to load locations. Please try refreshing the page.', 'error');
-                    
-                    // Show a simple retry button
-                    const retryBtn = document.createElement('button');
-                    retryBtn.className = 'btn';
-                    retryBtn.textContent = '🔄 Retry';
-                    retryBtn.style.cssText = 'margin: 1rem; display: block; margin-left: auto; margin-right: auto;';
-                    retryBtn.onclick = () => window.location.reload();
-                    document.body.appendChild(retryBtn);
-                    
-                    return false;
-                }
-            }
-        }
-
         // Event listeners setup
         function setupEventListeners() {
-            document.getElementById('initBtn').addEventListener('click', initializeApp);
-            document.getElementById('qrBtn').addEventListener('click', generateQR);
-            document.getElementById('refreshBtn').addEventListener('click', refreshData);
-            document.getElementById('setupBtn').addEventListener('click', showSetupForm);
-            document.getElementById('saveBtn').addEventListener('click', saveConfiguration);
-            document.getElementById('cancelBtn').addEventListener('click', hideSetupForm);
-            document.getElementById('demoBtn').addEventListener('click', loadDemoConfig);
-        }
             document.getElementById('initBtn').addEventListener('click', initializeApp);
             document.getElementById('qrBtn').addEventListener('click', generateQR);
             document.getElementById('refreshBtn').addEventListener('click', refreshData);
