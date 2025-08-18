@@ -294,11 +294,10 @@
             <p>Your API keys are automatically loaded from Supabase. Click "Initialize App" to start tracking locations!</p>
         </div>
         
-        <button class="btn" id="initBtn">🚀 Initialize App</button>
-        <button class="btn btn-secondary" id="qrBtn" disabled>📱 Generate QR Code</button>
-        <button class="btn btn-secondary" id="refreshBtn" disabled>🔄 Refresh Data</button>
-        <button class="btn btn-secondary" id="realTimeBtn" disabled>⏱️ Real-Time Mode: OFF</button>
-        <button class="btn btn-danger" id="setupBtn">⚙️ Update Configuration</button>
+        <button class="btn" onclick="initializeApp()" id="initBtn">🚀 Initialize App</button>
+        <button class="btn btn-secondary" onclick="generateQR()" id="qrBtn" disabled>📱 Generate QR Code</button>
+        <button class="btn btn-secondary" onclick="refreshData()" id="refreshBtn" disabled>🔄 Refresh Data</button>
+        <button class="btn btn-danger" onclick="showSetupForm()">⚙️ Update Configuration</button>
     </div>
 
     <div class="setup-form" id="setupForm">
@@ -319,9 +318,9 @@
             <label for="userId">User ID (optional):</label>
             <input type="text" id="userId" placeholder="Unique identifier for your setup">
         </div>
-        <button class="btn" id="saveConfigBtn">💾 Save Configuration</button>
-        <button class="btn btn-secondary" id="cancelBtn">❌ Cancel</button>
-        <button class="btn btn-secondary" id="demoConfigBtn">🎮 Load Demo Config</button>
+        <button class="btn" onclick="saveConfiguration()">💾 Save Configuration</button>
+        <button class="btn btn-secondary" onclick="hideSetupForm()">❌ Cancel</button>
+        <button class="btn btn-secondary" onclick="loadDemoConfig()">🎮 Load Demo Config</button>
     </div>
 
     <div id="loadingDiv" class="loading" style="display: none;">
@@ -366,11 +365,7 @@
             sheetId: '',
             range: 'Sheet1!A:C',
             userId: '',
-            initialized: false,
-            realTimeMode: false,
-            lastRefresh: null,
-            lastDataHash: null,
-            lastLocationCount: null
+            initialized: false
         };
 
         // Initialize Supabase
@@ -388,7 +383,7 @@
             alertDiv.style.display = 'block';
             alertDiv.className = `alert ${type}`;
             
-            setTimeout(function() {
+            setTimeout(() => {
                 alertDiv.style.display = 'none';
             }, 5000);
         }
@@ -582,7 +577,6 @@ Ready to initialize!`, 'success');
                 initBtn.textContent = '✅ Initialized';
                 qrBtn.disabled = false;
                 refreshBtn.disabled = false;
-                document.getElementById('realTimeBtn').disabled = false;
                 
                 if (updateInterval) clearInterval(updateInterval);
                 updateInterval = setInterval(refreshData, 30000);
@@ -614,32 +608,26 @@ Ready to initialize!`, 'success');
             }
         }
 
-        function switchToDemoMode() {
+        async function switchToDemoMode() {
             try {
                 appState.apiKey = 'DEMO_MODE';
                 appState.sheetId = 'demo';
                 
                 if (supabase) {
-                    supabase
+                    await supabase
                         .from('app_configurations')
                         .upsert({
                             user_id: 'demo_user',
                             google_maps_api_key: 'DEMO_MODE',
                             google_sheets_id: 'demo',
                             sheet_range: 'Sheet1!A:C'
-                        }, { onConflict: 'user_id' })
-                        .then(function() {
-                            console.log('Demo config saved to Supabase');
-                        })
-                        .catch(console.error);
+                        }, { onConflict: 'user_id' });
                 }
                 
                 updateStatus('Switching to demo mode...');
-                initializeApp().then(function() {
-                    showAlert('Demo mode activated! You can now test the interface. Set up your Google Maps API key later for full functionality.', 'success');
-                }).catch(function(error) {
-                    showAlert('Failed to switch to demo mode: ' + error.message, 'error');
-                });
+                await initializeApp();
+                
+                showAlert('Demo mode activated! You can now test the interface. Set up your Google Maps API key later for full functionality.', 'success');
                 
             } catch (error) {
                 showAlert('Failed to switch to demo mode: ' + error.message, 'error');
@@ -649,20 +637,13 @@ Ready to initialize!`, 'success');
         function loadGoogleMaps() {
             return new Promise((resolve, reject) => {
                 if (window.google && window.google.maps) {
-                    console.log('Google Maps already loaded');
                     resolve();
                     return;
                 }
 
                 if (appState.apiKey === 'DEMO_MODE') {
-                    console.log('Creating mock Google Maps for demo mode...');
                     createMockGoogleMaps();
-                    
-                    // Add a small delay to ensure everything is set up
-                    setTimeout(() => {
-                        console.log('Mock Google Maps created. Checking MapTypeId:', window.google?.maps?.MapTypeId);
-                        resolve();
-                    }, 100);
+                    resolve();
                     return;
                 }
 
@@ -673,22 +654,26 @@ Ready to initialize!`, 'success');
 
                 updateStatus('Loading Google Maps JavaScript API...');
                 
-                const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&libraries=geometry,marker&loading=async`;
-                script.async = true;
-                script.defer = true;
+                const testUrl = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&libraries=geometry&callback=__googleMapsCallback`;
                 
-                script.onload = () => {
+                window.__googleMapsCallback = () => {
                     if (window.google && window.google.maps) {
                         updateStatus('Google Maps API loaded successfully ✓');
+                        delete window.__googleMapsCallback;
                         resolve();
                     } else {
                         reject(new Error('Google Maps API failed to initialize properly.'));
                     }
                 };
+
+                const script = document.createElement('script');
+                script.src = testUrl;
+                script.async = true;
+                script.defer = true;
                 
                 script.onerror = (error) => {
                     console.error('Google Maps script error details:', error);
+                    delete window.__googleMapsCallback;
                     
                     const errorMsg = `Google Maps API failed to load. This usually means:
 
@@ -710,8 +695,9 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                     reject(new Error(errorMsg));
                 };
                 
-                setTimeout(function() {
+                setTimeout(() => {
                     if (!window.google || !window.google.maps) {
+                        delete window.__googleMapsCallback;
                         reject(new Error('Google Maps API loading timed out after 10 seconds. Check your internet connection and API key validity.'));
                     }
                 }, 10000);
@@ -738,18 +724,7 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                         
                         this.element = element;
                         this.markers = [];
-                        this.fitBounds = () => {};
-                        this.setZoom = () => {};
-                        this.getZoom = () => 12;
-                        this.setCenter = () => {};
-                        this.addListener = () => {};
                         return this;
-                    },
-                    MapTypeId: {
-                        ROADMAP: 'roadmap',
-                        SATELLITE: 'satellite',
-                        HYBRID: 'hybrid',
-                        TERRAIN: 'terrain'
                     },
                     Marker: function(options) {
                         this.options = options;
@@ -813,7 +788,7 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                                 marker.markerElement.offsetParent.appendChild(infoDiv);
                                 
                                 setTimeout(() => {
-                                    infoDiv.remove();
+                                    if (infoDiv.parentNode) infoDiv.remove();
                                 }, 5000);
                             }
                         };
@@ -824,995 +799,11 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                         return this;
                     },
                     LatLng: function(lat, lng) { 
-                        this.latValue = lat;
-                        this.lngValue = lng;
-                        this.lat = () => lat;
-                        this.lng = () => lng;
-                        return this;
-                    },
-                    LatLngBounds: function() { 
                         return { 
-                            extend: () => {},
-                            contains: () => true
+                            lat: () => lat, 
+                            lng: () => lng,
+                            lat: lat,
+                            lng: lng
                         }; 
                     },
-                    Geocoder: function() {
-                        return {
-                            geocode: (request, callback) => {
-                                setTimeout(() => {
-                                    const latLng = new google.maps.LatLng(
-                                        34.0522 + (Math.random() - 0.5) * 0.1,
-                                        -118.2437 + (Math.random() - 0.5) * 0.1
-                                    );
-                                    callback([{
-                                        geometry: {
-                                            location: latLng
-                                        }
-                                    }], 'OK');
-                                }, 100);
-                            }
-                        };
-                    },
-                    geometry: {
-                        spherical: {
-                            computeDistanceBetween: () => Math.random() * 3 * 1609.34
-                        }
-                    },
-                    Size: function(w, h) { return { width: w, height: h }; },
-                    Point: function(x, y) { return { x: x, y: y }; },
-                    SymbolPath: {
-                        CIRCLE: 0
-                    },
-                    Animation: {
-                        DROP: 1
-                    },
-                    event: {
-                        addListenerOnce: (map, event, callback) => {
-                            // For demo mode, just call the callback immediately
-                            setTimeout(callback, 100);
-                        },
-                        addListener: () => {}
-                    }
-                }
-            };
-            
-            // Add method to Marker prototype for demo visualization
-            window.google.maps.Marker.prototype.addToMap = function() {
-                const markersContainer = document.getElementById('demoMarkers');
-                if (!markersContainer) return;
-                
-                const isZero = this.options.title?.includes('0');
-                const count = this.options.title?.match(/\d+/)?.[0] || '?';
-                const iconColor = isZero ? '#999999' : '#FFD700';
-                
-                this.markerElement = document.createElement('div');
-                this.markerElement.style.cssText = `
-                    position: relative;
-                    display: inline-flex;
-                    align-items: center;
-                    background: ${iconColor};
-                    color: black;
-                    padding: 8px 12px;
-                    border-radius: 20px;
-                    margin: 5px;
-                    cursor: pointer;
-                    font-weight: bold;
-                    font-size: 12px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-                    border: 2px solid white;
-                    transition: transform 0.2s ease;
-                `;
-                
-                this.markerElement.innerHTML = `
-                    📍 ${this.options.title || 'DW Location'}
-                `;
-                
-                this.markerElement.addEventListener('mouseover', () => {
-                    this.markerElement.style.transform = 'scale(1.1)';
-                });
-                
-                this.markerElement.addEventListener('mouseout', () => {
-                    this.markerElement.style.transform = 'scale(1)';
-                });
-                
-                this.markerElement.addEventListener('click', () => {
-                    if (this.clickCallback) {
-                        this.clickCallback();
-                    }
-                });
-                
-                markersContainer.appendChild(this.markerElement);
-            };
-        }
-
-        function getUserLocation() {
-            return new Promise((resolve, reject) => {
-                if (!navigator.geolocation) {
-                    userLocation = { lat: 34.0522, lng: -118.2437 };
-                    initializeMap();
-                    resolve();
-                    return;
-                }
-
-                updateStatus('Getting your location...');
-                
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        userLocation = {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude
-                        };
-                        initializeMap();
-                        resolve();
-                    },
-                    (error) => {
-                        userLocation = { lat: 34.0522, lng: -118.2437 };
-                        initializeMap();
-                        showAlert('Using default location. Please allow location access for accurate results.', 'info');
-                        resolve();
-                    }
-                );
-            });
-        }
-
-        function initializeMap() {
-            console.log('Initializing map. API Key:', appState.apiKey);
-            console.log('Google Maps object exists:', !!window.google);
-            console.log('Google Maps API exists:', !!window.google?.maps);
-            console.log('MapTypeId exists:', !!window.google?.maps?.MapTypeId);
-            
-            if (appState.apiKey === 'DEMO_MODE') {
-                console.log('Creating demo map...');
-                map = new google.maps.Map(document.getElementById('map'), {});
-                console.log('Demo map created successfully');
-                return;
-            }
-
-            console.log('Creating real Google Maps with user location:', userLocation);
-
-            // Check if Google Maps API is properly loaded
-            if (!window.google || !window.google.maps || !window.google.maps.MapTypeId) {
-                console.error('Google Maps API not properly loaded');
-                console.error('google:', window.google);
-                console.error('google.maps:', window.google?.maps);
-                console.error('MapTypeId:', window.google?.maps?.MapTypeId);
-                updateStatus('Google Maps API Error - MapTypeId not found');
-                return;
-            }
-
-            try {
-                map = new google.maps.Map(document.getElementById('map'), {
-                    zoom: 12,
-                    center: userLocation,
-                    mapTypeId: google.maps.MapTypeId.ROADMAP,
-                    styles: [
-                        {
-                            featureType: 'all',
-                            elementType: 'geometry.fill',
-                            stylers: [{ color: '#f5f5f5' }]
-                        },
-                        {
-                            featureType: 'water',
-                            elementType: 'geometry.fill',
-                            stylers: [{ color: '#c9d6e8' }]
-                        }
-                    ]
-                });
-
-                console.log('Real map initialized:', map);
-
-                const userMarker = new google.maps.Marker({
-                    position: userLocation,
-                    map: map,
-                    title: 'Your Current Location',
-                    icon: {
-                        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-                                <circle cx="12" cy="12" r="10" fill="#4285F4" stroke="white" stroke-width="3"/>
-                                <circle cx="12" cy="12" r="4" fill="white"/>
-                            </svg>
-                        `)}`,
-                        scaledSize: new google.maps.Size(24, 24),
-                        anchor: new google.maps.Point(12, 12)
-                    },
-                    zIndex: 1000
-                });
-
-                console.log('User location marker added:', userMarker);
-
-                map.addListener('click', (event) => {
-                    console.log('Map clicked at:', event.latLng.toString());
-                });
-
-                google.maps.event.addListenerOnce(map, 'idle', () => {
-                    console.log('Map is fully loaded and ready');
-                    updateStatus('Map loaded and ready for markers');
-                });
-            } catch (error) {
-                console.error('Error initializing map:', error);
-                updateStatus('Map initialization failed: ' + error.message);
-            }
-        }
-
-        function toggleRealTimeMode() {
-            const realTimeBtn = document.getElementById('realTimeBtn');
-            
-            appState.realTimeMode = !appState.realTimeMode;
-            
-            if (appState.realTimeMode) {
-                realTimeBtn.textContent = '⏱️ Real-Time Mode: ON';
-                realTimeBtn.style.background = 'linear-gradient(45deg, #4CAF50, #45a049)';
-                
-                // Clear existing interval and start faster refresh (every 10 seconds)
-                if (updateInterval) clearInterval(updateInterval);
-                updateInterval = setInterval(function() {
-                    refreshData();
-                }, 10000);
-                
-                showAlert('🚀 Real-Time Mode activated! Data will refresh every 10 seconds. Add new addresses to your Google Sheet and watch them appear!', 'success');
-                
-                // Do an immediate refresh
-                refreshData();
-                
-            } else {
-                realTimeBtn.textContent = '⏱️ Real-Time Mode: OFF';
-                realTimeBtn.style.background = 'linear-gradient(45deg, #2196F3, #1976D2)';
-                
-                // Switch back to normal refresh (every 30 seconds)
-                if (updateInterval) clearInterval(updateInterval);
-                updateInterval = setInterval(function() {
-                    refreshData();
-                }, 30000);
-                
-                showAlert('Real-Time Mode deactivated. Data will refresh every 30 seconds.', 'info');
-            }
-        }
-
-        async function loadSheetsData() {
-            updateStatus('Loading sheet data...');
-            document.getElementById('loadingDiv').style.display = 'block';
-
-            try {
-                if (!appState.sheetId || appState.sheetId === 'demo') {
-                    console.log('No sheet ID provided, using demo data');
-                    await loadDemoData();
-                    document.getElementById('loadingDiv').style.display = 'none';
-                    return;
-                }
-
-                let data = null;
-                
-                const csvUrl = `https://docs.google.com/spreadsheets/d/${appState.sheetId}/export?format=csv&gid=0`;
-                console.log('Attempting to fetch from:', csvUrl);
-                
-                try {
-                    updateStatus('Connecting to Google Sheets (CSV)...');
-                    const response = await fetch(csvUrl, {
-                        method: 'GET',
-                        mode: 'cors',
-                        headers: {
-                            'Content-Type': 'text/csv',
-                        }
-                    });
-                    
-                    console.log('CSV Response status:', response.status);
-                    
-                    if (response.ok) {
-                        const csvText = await response.text();
-                        console.log('CSV data received:', csvText.substring(0, 200) + '...');
-                        
-                        if (csvText.trim()) {
-                            data = parseCSV(csvText);
-                            console.log('Parsed CSV data:', data);
-                            showAlert('Successfully loaded data from Google Sheets!', 'success');
-                        }
-                    } else {
-                        throw new Error(`HTTP ${response.status}: Sheet may not be publicly accessible`);
-                    }
-                } catch (csvError) {
-                    console.warn('CSV method failed:', csvError);
-                    
-                    try {
-                        updateStatus('Trying alternate Google Sheets access...');
-                        const publicUrl = `https://docs.google.com/spreadsheets/d/${appState.sheetId}/gviz/tq?tqx=out:csv&sheet=Sheet1`;
-                        console.log('Trying public URL:', publicUrl);
-                        
-                        const altResponse = await fetch(publicUrl);
-                        if (altResponse.ok) {
-                            const altCsvText = await altResponse.text();
-                            data = parseCSV(altCsvText);
-                            showAlert('Successfully loaded data using alternate method!', 'success');
-                        }
-                    } catch (altError) {
-                        console.warn('Alternate method failed:', altError);
-                    }
-                }
-                
-                if (!data || data.length === 0) {
-                    const errorMsg = `Could not load Google Sheets data. Using demo data instead.
-
-📋 Troubleshooting Steps:
-1. Make sure your Google Sheet is publicly viewable
-2. Check that the Sheet ID is correct: ${appState.sheetId}
-3. Verify your sheet has data in columns A, B, C
-4. Try sharing with "Anyone with the link can view"
-
-Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
-                    
-                    showAlert(errorMsg, 'error');
-                    console.error('All Google Sheets methods failed, using demo data');
-                    
-                    data = getDemoData();
-                    showAlert('Using demo data. Please check your Google Sheets configuration.', 'info');
-                }
-
-                await processLocationsData(data);
-                document.getElementById('loadingDiv').style.display = 'none';
-                
-            } catch (error) {
-                console.error('Error in loadSheetsData:', error);
-                document.getElementById('loadingDiv').style.display = 'none';
-                
-                showAlert('Google Sheets error: ' + error.message + '. Using demo data.', 'error');
-                await loadDemoData();
-            }
-        }
-
-        async function loadDemoData() {
-            const demoData = getDemoData();
-            return processLocationsData(demoData);
-        }
-
-        function getDemoData() {
-            return [
-                ['Location A', '1600 Amphitheatre Parkway, Mountain View, CA', '15'],
-                ['Location B', '1 Infinite Loop, Cupertino, CA', '8'], 
-                ['Location C', '410 Terry Avenue North, Seattle, WA', '0'],
-                ['Location D', '350 5th Ave, New York, NY', '12'],
-                ['Location E', '1 Hacker Way, Menlo Park, CA', '7']
-            ];
-        }
-
-        function parseCSV(csvText) {
-            console.log('Parsing CSV text:', csvText.substring(0, 300) + '...');
-            
-            if (!csvText || csvText.trim() === '') {
-                console.error('Empty CSV text provided');
-                return [];
-            }
-            
-            const lines = csvText.trim().split('\n');
-            console.log(`Found ${lines.length} lines in CSV`);
-            
-            const result = lines.map((line, index) => {
-                const row = [];
-                let current = '';
-                let inQuotes = false;
-                
-                for (let i = 0; i < line.length; i++) {
-                    const char = line[i];
-                    if (char === '"') {
-                        inQuotes = !inQuotes;
-                    } else if (char === ',' && !inQuotes) {
-                        row.push(current.trim().replace(/^"|"$/g, ''));
-                        current = '';
-                    } else {
-                        current += char;
-                    }
-                }
-                row.push(current.trim().replace(/^"|"$/g, ''));
-                
-                console.log(`Parsed line ${index}:`, row);
-                return row;
-            });
-            
-            console.log('Final parsed result:', result);
-            return result;
-        }
-
-        async function processLocationsData(data) {
-            console.log('Processing locations data:', data);
-            sheetsData = [];
-            clearMarkers();
-
-            if (!data || data.length === 0) {
-                console.error('No data provided to processLocationsData');
-                updateStatus('No location data found');
-                return;
-            }
-
-            let startIndex = 0;
-            if (data.length > 0) {
-                const firstRow = data[0];
-                if (firstRow.some(cell => 
-                    cell && typeof cell === 'string' && 
-                    (cell.toLowerCase().includes('name') || 
-                     cell.toLowerCase().includes('address') || 
-                     cell.toLowerCase().includes('count') ||
-                     cell.toLowerCase().includes('location'))
-                )) {
-                    console.log('Detected header row, skipping:', firstRow);
-                    startIndex = 1;
-                }
-            }
-
-            const geocoder = new google.maps.Geocoder();
-            const bounds = new google.maps.LatLngBounds();
-            let processedCount = 0;
-            let successCount = 0;
-
-            updateStatus(`Processing ${data.length - startIndex} locations...`);
-
-            for (let i = startIndex; i < data.length; i++) {
-                const row = data[i];
-                console.log(`Processing row ${i}:`, row);
-                
-                if (row.length >= 3 && row[0] && row[1] && row[2] !== undefined) {
-                    const [name, address, count] = row.map(cell => cell ? cell.toString().trim() : '');
-                    
-                    if (!address || 
-                        address.toLowerCase() === 'address' ||
-                        address.length < 5 ||
-                        address.toLowerCase().includes('column') ||
-                        address.toLowerCase().includes('header')) {
-                        console.log(`Skipping invalid address: "${address}"`);
-                        continue;
-                    }
-                    
-                    processedCount++;
-                    console.log(`🎯 Geocoding: "${name}" at "${address}" (count: ${count})`);
-                    
-                    try {
-                        const location = await geocodeAddress(geocoder, address);
-                        console.log('✅ Geocoded "' + address + '" to:', location.lat(), location.lng());
-                        
-                        let distance = 0;
-                        if (appState.apiKey !== 'DEMO_MODE') {
-                            distance = google.maps.geometry.spherical.computeDistanceBetween(
-                                new google.maps.LatLng(userLocation.lat, userLocation.lng),
-                                location
-                            ) / 1609.34;
-                        } else {
-                            distance = Math.random() * 3;
-                        }
-                        
-                        console.log('📍 Distance from user: ' + distance.toFixed(2) + ' miles');
-
-                        if (distance <= 3) {
-                            const locationData = {
-                                name: name || 'Location ' + (successCount + 1),
-                                address,
-                                count: parseInt(count) || 0,
-                                position: location,
-                                distance
-                            };
-
-                            console.log('📍 Adding location to map:', locationData);
-                            sheetsData.push(locationData);
-                            
-                            const marker = createMarker(locationData);
-                            if (marker) {
-                                console.log('✅ Marker created and should be visible on map');
-                                successCount++;
-                            } else {
-                                console.log('❌ Failed to create marker');
-                            }
-                            
-                            if (appState.apiKey !== 'DEMO_MODE') {
-                                bounds.extend(location);
-                            }
-                        } else {
-                            console.log('📍 Location "' + name + '" is too far (' + distance.toFixed(2) + ' miles)');
-                        }
-                    } catch (error) {
-                        console.error('❌ Failed to geocode "' + address + '":', error.message);
-                        updateStatus('Could not find address: "' + address + '"');
-                    }
-                } else {
-                    console.warn(`⚠️ Skipping invalid row ${i}:`, row);
-                }
-                
-                updateStatus(`Processed ${i + 1 - startIndex}/${data.length - startIndex} locations...`);
-            }
-
-            console.log(`🎯 Final results: ${successCount} markers created out of ${processedCount} addresses processed`);
-            console.log('📍 Total markers on map:', markers.length);
-
-            if (sheetsData.length > 0) {
-                if (appState.apiKey !== 'DEMO_MODE') {
-                    bounds.extend(new google.maps.LatLng(userLocation.lat, userLocation.lng));
-                    
-                    console.log('🗺️ Fitting map bounds to show all markers');
-                    map.fitBounds(bounds);
-                    
-                    setTimeout(function() {
-                        if (map.getZoom() > 15) {
-                            map.setZoom(15);
-                        }
-                    }, 1000);
-                }
-                
-                updateLocationsList();
-                document.getElementById('infoPanel').style.display = 'block';
-                updateStatus(`Found ${sheetsData.length} locations within 3 miles`);
-                
-                // Check if we have new locations compared to last time
-                if (appState.lastLocationCount && sheetsData.length > appState.lastLocationCount) {
-                    const newCount = sheetsData.length - appState.lastLocationCount;
-                    showAlert(`🎉 ${newCount} new location(s) added! Total: ${sheetsData.length} locations`, 'success');
-                } else if (!appState.lastLocationCount) {
-                    showAlert(`🎉 Successfully loaded ${sheetsData.length} locations! Look for yellow circles on the map.`, 'success');
-                }
-                
-                appState.lastLocationCount = sheetsData.length;
-                
-                console.log('📍 All marker positions:');
-                markers.forEach(function(marker, index) {
-                    if (marker.locationData) {
-                        console.log('Marker ' + index + ': ' + marker.locationData.name + ' at ' + marker.getPosition().lat() + ', ' + marker.getPosition().lng());
-                    }
-                });
-                
-            } else {
-                updateStatus('No valid locations found');
-                document.getElementById('infoPanel').style.display = 'none';
-                
-                if (processedCount === 0) {
-                    showAlert('❌ No valid addresses found in your Google Sheet. Please check your data format:\n\nExpected format:\nColumn A: Location Name\nColumn B: Complete Address (e.g., "123 Main St, Los Angeles, CA")\nColumn C: Count Number', 'error');
-                } else {
-                    showAlert(`⚠️ Found ${processedCount} addresses but none were within 3 miles of your location or could be geocoded. Check your addresses and try again.`, 'info');
-                }
-                
-                console.log('📊 Processed data summary:', {
-                    totalRows: data.length,
-                    skippedHeaderRows: startIndex,
-                    processedRows: processedCount,
-                    successfulMarkers: successCount,
-                    userLocation: userLocation,
-                    sampleData: data.slice(0, Math.min(5, data.length))
-                });
-            }
-        }
-
-        function geocodeAddress(geocoder, address) {
-            return new Promise((resolve, reject) => {
-                if (appState.apiKey === 'DEMO_MODE') {
-                    setTimeout(() => {
-                        const latLng = new google.maps.LatLng(
-                            34.0522 + (Math.random() - 0.5) * 0.1,
-                            -118.2437 + (Math.random() - 0.5) * 0.1
-                        );
-                        console.log('Demo geocoding result for "' + address + '":', latLng);
-                        console.log('LatLng functions check - lat:', typeof latLng.lat, 'lng:', typeof latLng.lng);
-                        resolve(latLng);
-                    }, 50);
-                    return;
-                }
-
-                geocoder.geocode({ address }, (results, status) => {
-                    if (status === 'OK' && results[0]) {
-                        resolve(results[0].geometry.location);
-                    } else {
-                        reject(new Error(`Geocoding failed: ${status}`));
-                    }
-                });
-            });
-        }
-
-        function createMarker(locationData) {
-            console.log('🎯 Creating marker for:', locationData.name);
-            console.log('Position object type:', typeof locationData.position);
-            console.log('Position object:', locationData.position);
-            console.log('Map object exists:', !!map);
-            
-            const isZero = locationData.count === 0;
-            const iconColor = isZero ? '#999999' : '#FFD700';
-            
-            let position;
-            try {
-                if (locationData.position && typeof locationData.position.lat === 'function') {
-                    position = {
-                        lat: locationData.position.lat(),
-                        lng: locationData.position.lng()
-                    };
-                    console.log('✅ Converted LatLng object to position:', position);
-                } else if (locationData.position && typeof locationData.position.lat === 'number') {
-                    position = locationData.position;
-                    console.log('✅ Using existing position object:', position);
-                } else {
-                    console.error('❌ Invalid position for marker:', locationData.position);
-                    return null;
-                }
-            } catch (posError) {
-                console.error('❌ Error processing position:', posError);
-                return null;
-            }
-            
-            console.log('📍 Final position for marker:', position);
-
-            try {
-                const marker = new google.maps.Marker({
-                    position: position,
-                    map: map,
-                    title: `DW ${locationData.count} - ${locationData.name}`,
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        fillColor: iconColor,
-                        fillOpacity: 1,
-                        strokeColor: '#FFFFFF',
-                        strokeWeight: 3,
-                        scale: 15
-                    },
-                    label: {
-                        text: locationData.count.toString(),
-                        color: '#000000',
-                        fontSize: '12px',
-                        fontWeight: 'bold'
-                    },
-                    animation: google.maps.Animation.DROP,
-                    zIndex: isZero ? 100 : 200,
-                    visible: true,
-                    optimized: false
-                });
-
-                console.log('✅ Marker created successfully for:', locationData.name);
-                console.log('Marker position check:', marker.getPosition());
-                console.log('Marker map check:', marker.getMap());
-                console.log('Marker visible check:', marker.getVisible());
-
-                const infoWindow = new google.maps.InfoWindow({
-                    content: '<div style="padding: 15px; min-width: 250px;"><h3 style="margin: 0 0 10px 0; color: #333;">🎯 DW Location</h3><p><strong>Name:</strong> ' + locationData.name + '</p><p><strong>Address:</strong> ' + locationData.address + '</p><p><strong>Available:</strong> <span style="color: ' + (isZero ? '#999' : '#4CAF50') + '; font-weight: bold;">' + locationData.count + '</span></p><p><strong>Distance:</strong> ' + locationData.distance.toFixed(1) + ' miles</p><button onclick="window.open(\'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(locationData.address) + '\', \'_blank\')" style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px;">🧭 Get Directions</button></div>'
-                });
-
-                marker.addListener('click', function() {
-                    console.log('🖱️ Marker clicked:', locationData.name);
-                    markers.forEach(function(m) {
-                        if (m.infoWindow && m.infoWindow !== infoWindow) {
-                            m.infoWindow.close();
-                        }
-                    });
-                    infoWindow.open(map, marker);
-                });
-
-                marker.infoWindow = infoWindow;
-                marker.locationData = locationData;
-                
-                markers.push(marker);
-                console.log(`📍 Total markers now: ${markers.length}`);
-                
-                return marker;
-                
-            } catch (markerError) {
-                console.error('❌ Error creating marker:', markerError);
-                console.error('Error details:', markerError.message);
-                console.error('Stack trace:', markerError.stack);
-                return null;
-            }
-        }
-
-        function clearMarkers() {
-            markers.forEach(function(marker) {
-                marker.setMap(null);
-            });
-            markers = [];
-        }
-
-        function updateLocationsList() {
-            const listContainer = document.getElementById('locationsList');
-            listContainer.innerHTML = '';
-
-            sheetsData
-                .sort(function(a, b) { return a.distance - b.distance; })
-                .forEach(function(location) {
-                    const item = document.createElement('div');
-                    item.className = 'location-item';
-                    item.innerHTML = '<div><div class="location-name">DW - ' + location.address + '</div><div style="font-size: 0.8rem; color: #666;">' + location.distance.toFixed(1) + ' miles away</div></div><div class="location-count ' + (location.count === 0 ? 'zero' : '') + '">' + location.count + '</div>';
-                    listContainer.appendChild(item);
-                });
-        }
-
-        async function refreshData() {
-            if (!appState.initialized) {
-                showAlert('Please initialize the app first', 'error');
-                return;
-            }
-
-            try {
-                // Show visual feedback for refresh
-                const refreshBtn = document.getElementById('refreshBtn');
-                const originalText = refreshBtn.textContent;
-                refreshBtn.textContent = '🔄 Refreshing...';
-                refreshBtn.disabled = true;
-                
-                updateStatus('Refreshing data from Google Sheets...');
-                
-                if (appState.sheetId && appState.sheetId !== 'demo') {
-                    await loadSheetsData();
-                } else {
-                    await loadDemoData();
-                }
-                
-                // Update status with last refresh time
-                const now = new Date();
-                const timeString = now.toLocaleTimeString();
-                
-                if (appState.realTimeMode) {
-                    updateStatus(`✅ Real-time monitoring active - Last updated: ${timeString}`);
-                } else {
-                    updateStatus(`✅ Data refreshed at ${timeString}`);
-                    showAlert('Data refreshed successfully!', 'success');
-                }
-                
-                // Restore button
-                refreshBtn.textContent = originalText;
-                refreshBtn.disabled = false;
-                
-            } catch (error) {
-                updateStatus('❌ Refresh failed');
-                showAlert('Failed to refresh data: ' + error.message, 'error');
-                
-                // Restore button even on error
-                const refreshBtn = document.getElementById('refreshBtn');
-                refreshBtn.textContent = '🔄 Refresh Data';
-                refreshBtn.disabled = false;
-            }
-        }
-
-        function generateQR() {
-            let shareableUrl = window.location.href;
-            
-            if (shareableUrl.includes('localhost') || shareableUrl.includes('127.0.0.1') || shareableUrl.includes('file://')) {
-                showAlert('Local URLs cannot be accessed by other devices. To make this work:\n\n1. Deploy to a web server (Netlify, Vercel, GitHub Pages)\n2. Use ngrok for temporary public URL\n3. Or share the HTML file directly', 'error');
-                shareableUrl = 'https://your-app-domain.com/dw-location-tracker';
-            }
-            
-            const qrContainer = document.getElementById('qrContainer');
-            const qrCodeDiv = document.getElementById('qrCode');
-            
-            qrCodeDiv.innerHTML = '';
-            
-            new QRCode(qrCodeDiv, {
-                text: shareableUrl,
-                width: 200,
-                height: 200,
-                colorDark: '#000000',
-                colorLight: '#ffffff'
-            });
-            
-            const instructionsDiv = document.createElement('div');
-            instructionsDiv.style.marginTop = '1rem';
-            instructionsDiv.style.padding = '1rem';
-            instructionsDiv.style.backgroundColor = '#f0f8ff';
-            instructionsDiv.style.borderRadius = '8px';
-            instructionsDiv.style.fontSize = '14px';
-            instructionsDiv.style.lineHeight = '1.4';
-            
-            if (shareableUrl.includes('localhost') || shareableUrl.includes('127.0.0.1') || shareableUrl.includes('file://')) {
-                instructionsDiv.innerHTML = `
-                    <h4 style="margin-bottom: 0.5rem; color: #1976d2;">📱 To Make QR Code Work:</h4>
-                    <p><strong>Option 1 - Quick Deploy (Recommended):</strong></p>
-                    <ol style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                        <li>Copy this HTML file</li>
-                        <li>Go to <a href="https://netlify.com" target="_blank">netlify.com</a> or <a href="https://vercel.com" target="_blank">vercel.com</a></li>
-                        <li>Drag & drop the file to deploy</li>
-                        <li>Get your public URL and generate QR again</li>
-                    </ol>
-                    
-                    <p><strong>Option 2 - Temporary Share:</strong></p>
-                    <ol style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                        <li>Install ngrok: <code>npm install -g ngrok</code></li>
-                        <li>Run: <code>ngrok http 8080</code> (or your port)</li>
-                        <li>Use the public URL for QR code</li>
-                    </ol>
-                `;
-            } else {
-                instructionsDiv.innerHTML = `
-                    <h4 style="margin-bottom: 0.5rem; color: #4CAF50;">✅ QR Code Ready!</h4>
-                    <p>This QR code will work on any device with internet access.</p>
-                    <p><strong>URL:</strong> <code style="word-break: break-all;">${shareableUrl}</code></p>
-                `;
-            }
-            
-            qrContainer.appendChild(instructionsDiv);
-            qrContainer.style.display = 'block';
-            
-            if (!shareableUrl.includes('localhost') && !shareableUrl.includes('127.0.0.1') && !shareableUrl.includes('file://')) {
-                showAlert('QR code generated! Users can scan this to access the map on their mobile devices.', 'success');
-            }
-        }
-
-        // Debug tools
-        window.debugMarkers = function() {
-            console.log('=== MARKER DEBUG INFO ===');
-            console.log('Total markers array length:', markers.length);
-            console.log('Map object:', map);
-            console.log('User location:', userLocation);
-            console.log('App state:', appState);
-            
-            markers.forEach(function(marker, index) {
-                console.log('Marker ' + index + ':', {
-                    position: marker.getPosition() ? {
-                        lat: marker.getPosition().lat(),
-                        lng: marker.getPosition().lng()
-                    } : 'No position',
-                    map: marker.getMap() ? 'Has map' : 'NO MAP',
-                    visible: marker.getVisible ? marker.getVisible() : 'Unknown',
-                    title: marker.getTitle(),
-                    icon: marker.getIcon()
-                });
-            });
-            
-            const testMarker = new google.maps.Marker({
-                position: {lat: userLocation.lat + 0.01, lng: userLocation.lng + 0.01},
-                map: map,
-                title: 'TEST MARKER',
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    fillColor: '#FF0000',
-                    fillOpacity: 1,
-                    strokeColor: '#FFFFFF',
-                    strokeWeight: 2,
-                    scale: 10
-                }
-            });
-            console.log('Test marker created:', testMarker);
-            
-            return {
-                totalMarkers: markers.length,
-                mapExists: !!map,
-                userLocation: userLocation,
-                testMarker: testMarker
-            };
-        };
-
-        window.forceShowMarkers = function() {
-            console.log('Forcing all markers to be visible...');
-            markers.forEach(function(marker, index) {
-                marker.setMap(map);
-                marker.setVisible(true);
-                console.log('Marker ' + index + ' forced visible');
-            });
-        };
-
-        window.createTestMarker = function(lat, lng, color = '#FFD700') {
-            const testPos = lat && lng ? {lat, lng} : {
-                lat: userLocation.lat + (Math.random() - 0.5) * 0.01,
-                lng: userLocation.lng + (Math.random() - 0.5) * 0.01
-            };
-            
-            const marker = new google.maps.Marker({
-                position: testPos,
-                map: map,
-                title: 'Manual Test Marker',
-                icon: {
-                    path: google.maps.SymbolPath.CIRCLE,
-                    fillColor: color,
-                    fillOpacity: 1,
-                    strokeColor: '#FFFFFF',
-                    strokeWeight: 3,
-                    scale: 15
-                },
-                label: {
-                    text: '99',
-                    color: '#000000',
-                    fontSize: '12px',
-                    fontWeight: 'bold'
-                }
-            });
-            
-            console.log('Test marker created at:', testPos);
-            return marker;
-        };
-
-        window.testWithYourData = function() {
-            console.log('🧪 Testing with your exact Google Sheets data...');
-            
-            const testData = [
-                ['Name', 'Address', 'Number'],
-                ['reg1', '266 Regent Cir, Inglewood, CA 90301', '10'],
-                ['hill1', '258 N Hillcrest Blvd, Inglewood, CA 90301', '12'],
-                ['grac1', '512 Grace Ave, Inglewood, CA 90301', '20']
-            ];
-            
-            console.log('Test data:', testData);
-            
-            processLocationsData(testData).then(function() {
-                console.log('✅ Test completed - check map for markers!');
-                return 'Test completed successfully';
-            }).catch(function(error) {
-                console.error('❌ Test failed:', error);
-                return 'Test failed: ' + error.message;
-            });
-        };
-
-        window.testSingleAddress = function(address) {
-            if (!address) address = '266 Regent Cir, Inglewood, CA 90301';
-            console.log('🎯 Testing single address: "' + address + '"');
-            
-            if (!window.google || !window.google.maps) {
-                console.error('❌ Google Maps not loaded');
-                return;
-            }
-            
-            const geocoder = new google.maps.Geocoder();
-            
-            geocodeAddress(geocoder, address).then(function(result) {
-                console.log('✅ Geocoding successful:', {
-                    address: address,
-                    lat: result.lat(),
-                    lng: result.lng()
-                });
-                
-                const testMarker = new google.maps.Marker({
-                    position: result,
-                    map: map,
-                    title: 'TEST: ' + address,
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        fillColor: '#FF0000',
-                        fillOpacity: 1,
-                        strokeColor: '#FFFFFF',
-                        strokeWeight: 3,
-                        scale: 20
-                    },
-                    label: {
-                        text: 'TEST',
-                        color: '#FFFFFF',
-                        fontSize: '10px',
-                        fontWeight: 'bold'
-                    }
-                });
-                
-                console.log('🎯 Red test marker created - it should be visible on the map!');
-                
-                map.setCenter(result);
-                map.setZoom(16);
-                
-                return result;
-                
-            }).catch(function(error) {
-                console.error('❌ Geocoding failed:', error);
-                return null;
-            });
-        };
-
-        // Auto-refresh every 2 minutes when active (shorter interval)
-        setInterval(function() {
-            if (appState.initialized && document.visibilityState === 'visible' && !appState.realTimeMode) {
-                refreshData().catch(console.error);
-            }
-        }, 120000); // 2 minutes
-
-        // Initialize app on load
-        window.addEventListener('load', function() {
-            updateStatus('Loading application...');
-            
-            // Add event listeners after DOM is loaded
-            document.getElementById('initBtn').addEventListener('click', initializeApp);
-            document.getElementById('qrBtn').addEventListener('click', generateQR);
-            document.getElementById('refreshBtn').addEventListener('click', refreshData);
-            document.getElementById('realTimeBtn').addEventListener('click', toggleRealTimeMode);
-            document.getElementById('setupBtn').addEventListener('click', showSetupForm);
-            document.getElementById('saveConfigBtn').addEventListener('click', saveConfiguration);
-            document.getElementById('cancelBtn').addEventListener('click', hideSetupForm);
-            document.getElementById('demoConfigBtn').addEventListener('click', loadDemoConfig);
-            
-            loadConfiguration().then(function(configLoaded) {
-                if (configLoaded) {
-                    updateStatus('Ready to initialize! Click the button above.');
-                } else {
-                    updateStatus('Please set up your configuration first.');
-                }
-            }).catch(function(error) {
-                console.error('Error during startup:', error);
-                updateStatus('Error loading configuration. Please set up manually.');
-                showAlert('Could not load saved configuration. Please set up your API keys.', 'error');
-            });
-            
-            setTimeout(function() {
-                console.log('\n🔧 DEBUGGING TOOLS AVAILABLE:\n╔══════════════════════════════════════════════╗\n\nRun these commands in the console to debug markers:\n\n📍 debugMarkers()     - Show detailed marker information\n🔄 forceShowMarkers() - Force all markers to be visible  \n🎯 createTestMarker() - Create a test marker manually\n🧪 testWithYourData() - Test with your exact data\n🎯 testSingleAddress() - Test geocoding one address\n\nExample: Type "debugMarkers()" and press Enter to see marker info.');
-            }, 2000);
-        });
-    </script>
-</body>
-</html>
+                    LatLngBounds: function() {
