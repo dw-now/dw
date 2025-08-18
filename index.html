@@ -840,12 +840,13 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                         return {
                             geocode: (request, callback) => {
                                 setTimeout(() => {
+                                    const latLng = new google.maps.LatLng(
+                                        34.0522 + (Math.random() - 0.5) * 0.1,
+                                        -118.2437 + (Math.random() - 0.5) * 0.1
+                                    );
                                     callback([{
                                         geometry: {
-                                            location: new google.maps.LatLng(
-                                                34.0522 + (Math.random() - 0.5) * 0.1,
-                                                -118.2437 + (Math.random() - 0.5) * 0.1
-                                            )
+                                            location: latLng
                                         }
                                     }], 'OK');
                                 }, 100);
@@ -1377,10 +1378,13 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             return new Promise((resolve, reject) => {
                 if (appState.apiKey === 'DEMO_MODE') {
                     setTimeout(() => {
-                        resolve(new google.maps.LatLng(
+                        const latLng = new google.maps.LatLng(
                             34.0522 + (Math.random() - 0.5) * 0.1,
                             -118.2437 + (Math.random() - 0.5) * 0.1
-                        ));
+                        );
+                        console.log('Demo geocoding result for "' + address + '":', latLng);
+                        console.log('LatLng functions check - lat:', typeof latLng.lat, 'lng:', typeof latLng.lng);
+                        resolve(latLng);
                     }, 50);
                     return;
                 }
