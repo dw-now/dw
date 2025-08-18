@@ -721,6 +721,17 @@ Ready to initialize!`, 'success');
                 }
             }
         }
+
+        // Event listeners setup
+        function setupEventListeners() {
+            document.getElementById('initBtn').addEventListener('click', initializeApp);
+            document.getElementById('qrBtn').addEventListener('click', generateQR);
+            document.getElementById('refreshBtn').addEventListener('click', refreshData);
+            document.getElementById('setupBtn').addEventListener('click', showSetupForm);
+            document.getElementById('saveBtn').addEventListener('click', saveConfiguration);
+            document.getElementById('cancelBtn').addEventListener('click', hideSetupForm);
+            document.getElementById('demoBtn').addEventListener('click', loadDemoConfig);
+        }
             document.getElementById('initBtn').addEventListener('click', initializeApp);
             document.getElementById('qrBtn').addEventListener('click', generateQR);
             document.getElementById('refreshBtn').addEventListener('click', refreshData);
