@@ -828,3 +828,666 @@
 
         // Auto-refresh setup
         function setupAutoRefresh() {
+            const interval = parseInt(document.getElementById('autoRefresh').value);
+            
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            
+            if (interval > 0) {
+                autoRefreshInterval = setInterval(() => {
+                    refreshData();
+                }, interval);
+                showAlert(`Auto-refresh enabled: every ${interval/1000} seconds`, 'info');
+            }
+        }
+
+        // Initialize app
+        async function initializeApp() {
+            const initBtn = document.getElementById('initBtn');
+            const qrBtn = document.getElementById('qrBtn');
+            const refreshBtn = document.getElementById('refreshBtn');
+            const exportBtn = document.getElementById('exportBtn');
+            
+            if (initBtn) {
+                initBtn.disabled = true;
+                initBtn.textContent = '⏳ Initializing...';
+            }
+
+            updateStatus('Validating configuration...');
+            
+            try {
+                await loadGoogleMaps();
+                updateStatus('Google Maps loaded ✓');
+                
+                await getUserLocation();
+                updateStatus('Location obtained ✓');
+                
+                if (appState.sheetId && appState.sheetId !== 'demo') {
+                    updateStatus('Loading Google Sheets data...');
+                    await loadSheetsData();
+                } else {
+                    updateStatus('Loading demo data...');
+                    await loadDemoData();
+                }
+                
+                appState.initialized = true;
+                updateStatus('App initialized successfully! 🎉');
+                
+                if (initBtn) {
+                    initBtn.textContent = '✅ Initialized';
+                    qrBtn.disabled = false;
+                    refreshBtn.disabled = false;
+                    exportBtn.disabled = false;
+                }
+                
+                document.getElementById('filterControls').style.display = 'flex';
+                showAlert('App initialized successfully!', 'success');
+                
+            } catch (error) {
+                console.error('Initialization error:', error);
+                
+                if (initBtn) {
+                    initBtn.disabled = false;
+                    initBtn.textContent = '🚀 Initialize App';
+                }
+                
+                updateStatus('Initialization failed ❌');
+                showAlert('Initialization failed: ' + error.message, 'error');
+            }
+        }
+
+        // Generate QR code
+        async function generateQR() {
+            let shareableUrl = window.location.href;
+            
+            const urlObj = new URL(shareableUrl);
+            urlObj.searchParams.set('autostart', 'true');
+            shareableUrl = urlObj.toString();
+            
+            const qrContainer = document.getElementById('qrContainer');
+            const qrCodeDiv = document.getElementById('qrCode');
+            
+            qrCodeDiv.innerHTML = '';
+            
+            new QRCode(qrCodeDiv, {
+                text: shareableUrl,
+                width: 256,
+                height: 256,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            
+            qrContainer.style.display = 'block';
+            showAlert('QR code generated!', 'success');
+        }
+
+        // Refresh data
+        async function refreshData() {
+            if (!appState.initialized) {
+                showAlert('Please initialize the app first', 'error');
+                return;
+            }
+
+            try {
+                showLoadingOverlay(true);
+                updateStatus('Refreshing data...');
+                
+                if (appState.sheetId && appState.sheetId !== 'demo') {
+                    await loadSheetsData();
+                } else {
+                    await loadDemoData();
+                }
+                
+                updateStats();
+                showLoadingOverlay(false);
+                showAlert('Data refreshed successfully!', 'success');
+                
+            } catch (error) {
+                showLoadingOverlay(false);
+                showAlert('Failed to refresh: ' + error.message, 'error');
+            }
+        }
+
+        // Save configuration
+        async function saveConfiguration() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const sheetId = document.getElementById('sheetId').value.trim();
+            const range = document.getElementById('range').value.trim();
+            const userId = document.getElementById('userId').value.trim() || 'default_user';
+            const mapStyle = document.getElementById('mapStyle').value;
+
+            if (!apiKey) {
+                showAlert('Please provide a Google Maps API Key', 'error');
+                return;
+            }
+
+            const config = {
+                user_id: userId,
+                google_maps_api_key: apiKey,
+                google_sheets_id: sheetId,
+                sheet_range: range,
+                map_style: mapStyle,
+                updated_at: new Date().toISOString()
+            };
+
+            try {
+                if (supabase) {
+                    await supabase.from('app_configurations').upsert(config, { onConflict: 'user_id' });
+                    showAlert('Configuration saved to cloud!', 'success');
+                } else {
+                    Object.keys(config).forEach(key => {
+                        localStorage.setItem(key, config[key]);
+                    });
+                    showAlert('Configuration saved locally', 'info');
+                }
+
+                appState.apiKey = apiKey;
+                appState.sheetId = sheetId;
+                appState.range = range;
+                appState.userId = userId;
+                appState.mapStyle = mapStyle;
+
+                hideSetupForm();
+                updateStatus('Configuration saved! Ready to initialize.');
+                
+            } catch (error) {
+                console.error('Error saving:', error);
+                showAlert('Failed to save: ' + error.message, 'error');
+            }
+        }
+
+        // Load configuration
+        async function loadConfiguration() {
+            try {
+                let config = null;
+
+                if (supabase) {
+                    const { data, error } = await supabase
+                        .from('app_configurations')
+                        .select('*')
+                        .order('updated_at', { ascending: false })
+                        .limit(1);
+
+                    if (!error && data && data.length > 0) {
+                        config = data[0];
+                    }
+                } else {
+                    const apiKey = localStorage.getItem('google_maps_api_key');
+                    if (apiKey) {
+                        config = {
+                            google_maps_api_key: apiKey,
+                            google_sheets_id: localStorage.getItem('google_sheets_id') || '',
+                            sheet_range: localStorage.getItem('sheet_range') || 'Sheet1!A:C',
+                            user_id: localStorage.getItem('user_id') || 'default_user',
+                            map_style: localStorage.getItem('map_style') || 'default'
+                        };
+                    }
+                }
+
+                if (config) {
+                    appState.apiKey = config.google_maps_api_key;
+                    appState.sheetId = config.google_sheets_id || '';
+                    appState.range = config.sheet_range || 'Sheet1!A:C';
+                    appState.userId = config.user_id || 'default_user';
+                    appState.mapStyle = config.map_style || 'default';
+                    
+                    updateStatus('Configuration loaded! Click "Initialize App" to start.');
+                    return true;
+                }
+
+            } catch (error) {
+                console.error('Error loading configuration:', error);
+            }
+
+            updateStatus('No configuration found. Please set up your API keys.');
+            return false;
+        }
+
+        // Map functions
+        function loadGoogleMaps() {
+            return new Promise((resolve, reject) => {
+                if (window.google && window.google.maps) {
+                    resolve();
+                    return;
+                }
+
+                if (appState.apiKey === 'DEMO_MODE') {
+                    createMockGoogleMaps();
+                    resolve();
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&libraries=geometry`;
+                script.async = true;
+                script.defer = true;
+                script.onload = resolve;
+                script.onerror = () => reject(new Error('Failed to load Google Maps'));
+                document.head.appendChild(script);
+            });
+        }
+
+        function createMockGoogleMaps() {
+            window.google = {
+                maps: {
+                    Map: function(element, options) {
+                        element.innerHTML = `
+                            <div style="position: relative; height: 100%; background: #e3f2fd;">
+                                <div style="padding: 20px; text-align: center;">
+                                    <h3>🗺️ Demo Map View</h3>
+                                    <p>Locations will appear here with real Google Maps API</p>
+                                    <div id="demoMarkers" style="margin-top: 20px;"></div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        this.element = element;
+                        this.fitBounds = () => {};
+                        this.setZoom = () => {};
+                        this.setCenter = () => {};
+                        this.setMapTypeId = () => {};
+                        this.addListener = () => {};
+                        this.setOptions = () => {};
+                        return this;
+                    },
+                    Marker: function(options) {
+                        this.options = options;
+                        this.setVisible = () => {};
+                        this.setMap = () => {};
+                        this.getPosition = () => ({ lat: () => 34.0522, lng: () => -118.2437 });
+                        this.addListener = () => {};
+                        return this;
+                    },
+                    InfoWindow: function() {
+                        this.open = () => {};
+                        this.close = () => {};
+                        return this;
+                    },
+                    LatLng: function(lat, lng) {
+                        this.lat = () => lat;
+                        this.lng = () => lng;
+                        return this;
+                    },
+                    LatLngBounds: function() {
+                        return { extend: () => {} };
+                    },
+                    Geocoder: function() {
+                        return {
+                            geocode: (request, callback) => {
+                                setTimeout(() => {
+                                    const latLng = new google.maps.LatLng(
+                                        34.0522 + (Math.random() - 0.5) * 0.1,
+                                        -118.2437 + (Math.random() - 0.5) * 0.1
+                                    );
+                                    callback([{ geometry: { location: latLng } }], 'OK');
+                                }, 100);
+                            }
+                        };
+                    },
+                    geometry: {
+                        spherical: {
+                            computeDistanceBetween: () => Math.random() * 10 * 1609.34
+                        }
+                    },
+                    MapTypeId: {
+                        ROADMAP: 'roadmap',
+                        SATELLITE: 'satellite',
+                        HYBRID: 'hybrid',
+                        TERRAIN: 'terrain'
+                    }
+                }
+            };
+        }
+
+        function getUserLocation() {
+            return new Promise((resolve) => {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            userLocation = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            };
+                            initializeMap();
+                            resolve();
+                        },
+                        () => {
+                            userLocation = { lat: 34.0522, lng: -118.2437 };
+                            initializeMap();
+                            resolve();
+                        }
+                    );
+                } else {
+                    userLocation = { lat: 34.0522, lng: -118.2437 };
+                    initializeMap();
+                    resolve();
+                }
+            });
+        }
+
+        function initializeMap() {
+            const mapOptions = {
+                zoom: 12,
+                center: userLocation,
+                mapTypeControl: true,
+                streetViewControl: false,
+                fullscreenControl: true
+            };
+
+            if (appState.mapStyle !== 'default' && mapStyles[appState.mapStyle]) {
+                mapOptions.styles = mapStyles[appState.mapStyle];
+            }
+
+            map = new google.maps.Map(document.getElementById('map'), mapOptions);
+
+            // Add user location marker
+            new google.maps.Marker({
+                position: userLocation,
+                map: map,
+                title: 'Your Location',
+                icon: {
+                    path: google.maps.SymbolPath.CIRCLE,
+                    scale: 10,
+                    fillColor: '#4285F4',
+                    fillOpacity: 1,
+                    strokeColor: '#ffffff',
+                    strokeWeight: 2
+                }
+            });
+        }
+
+        // Data loading functions
+        async function loadDemoData() {
+            const demoData = [
+                ['DW Downtown', '123 Main St, Los Angeles, CA', '15'],
+                ['DW Westside', '456 Ocean Ave, Santa Monica, CA', '8'],
+                ['DW Valley', '789 Ventura Blvd, Sherman Oaks, CA', '0'],
+                ['DW South Bay', '321 Beach Blvd, Manhattan Beach, CA', '12'],
+                ['DW Hollywood', '654 Sunset Blvd, Hollywood, CA', '3'],
+                ['DW Pasadena', '987 Colorado Blvd, Pasadena, CA', '7'],
+                ['DW Long Beach', '147 Pine Ave, Long Beach, CA', '0'],
+                ['DW Glendale', '258 Brand Blvd, Glendale, CA', '10']
+            ];
+            
+            await processLocationsData(demoData);
+        }
+
+        async function loadSheetsData() {
+            // Implement actual Google Sheets API call here
+            await loadDemoData(); // For now, use demo data
+        }
+
+        async function processLocationsData(data) {
+            sheetsData = [];
+            clearMarkers();
+
+            if (!data || data.length === 0) {
+                updateStatus('No location data found');
+                return;
+            }
+
+            const geocoder = new google.maps.Geocoder();
+            let successCount = 0;
+
+            for (let i = 0; i < data.length; i++) {
+                const row = data[i];
+                
+                if (row.length >= 3) {
+                    const [name, address, count] = row;
+                    
+                    try {
+                        const location = await geocodeAddress(geocoder, address);
+                        const distance = calculateDistance(userLocation, location);
+                        
+                        const locationData = {
+                            name,
+                            address,
+                            count: parseInt(count) || 0,
+                            position: location,
+                            distance
+                        };
+
+                        sheetsData.push(locationData);
+                        createMarker(locationData);
+                        successCount++;
+                        
+                    } catch (error) {
+                        console.error(`Failed to geocode: ${error.message}`);
+                    }
+                }
+            }
+
+            if (sheetsData.length > 0) {
+                updateLocationsList(sheetsData);
+                updateStats();
+                document.getElementById('infoPanel').style.display = 'block';
+                fitMapToMarkers();
+            }
+        }
+
+        function geocodeAddress(geocoder, address) {
+            return new Promise((resolve, reject) => {
+                geocoder.geocode({ address }, (results, status) => {
+                    if (status === 'OK' && results[0]) {
+                        resolve(results[0].geometry.location);
+                    } else {
+                        reject(new Error(`Geocoding failed: ${status}`));
+                    }
+                });
+            });
+        }
+
+        function calculateDistance(pos1, pos2) {
+            if (!window.google || !window.google.maps || !window.google.maps.geometry) {
+                return Math.random() * 10;
+            }
+            
+            const from = new google.maps.LatLng(pos1.lat, pos1.lng);
+            const to = pos2;
+            const distance = google.maps.geometry.spherical.computeDistanceBetween(from, to);
+            return distance / 1609.34; // Convert to miles
+        }
+
+        function createMarker(locationData) {
+            const isZero = locationData.count === 0;
+            const isLow = locationData.count > 0 && locationData.count < 5;
+            
+            const marker = new google.maps.Marker({
+                position: locationData.position,
+                map: map,
+                title: `${locationData.name} (${locationData.count} available)`,
+                icon: {
+                    url: `data:image/svg+xml,${encodeURIComponent(`
+                        <svg width="40" height="40" xmlns="http://www.w3.org/2000/svg">
+                            <circle cx="20" cy="20" r="18" fill="${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'}" stroke="white" stroke-width="2"/>
+                            <text x="20" y="26" text-anchor="middle" fill="white" font-size="14" font-weight="bold">${locationData.count}</text>
+                        </svg>
+                    `)}`,
+                    scaledSize: new google.maps.Size(40, 40)
+                }
+            });
+
+            const infoWindow = new google.maps.InfoWindow({
+                content: `
+                    <div style="padding: 10px;">
+                        <h4>${locationData.name}</h4>
+                        <p>${locationData.address}</p>
+                        <p><strong>Available:</strong> ${locationData.count}</p>
+                        <p><strong>Distance:</strong> ${locationData.distance.toFixed(1)} mi</p>
+                    </div>
+                `
+            });
+
+            marker.addListener('click', () => {
+                infoWindow.open(map, marker);
+            });
+
+            markers.push(marker);
+            return marker;
+        }
+
+        function clearMarkers() {
+            markers.forEach(marker => marker.setMap(null));
+            markers = [];
+        }
+
+        function updateLocationsList(data = sheetsData) {
+            const listContainer = document.getElementById('locationsList');
+            listContainer.innerHTML = '';
+
+            data
+                .sort((a, b) => a.distance - b.distance)
+                .forEach(location => {
+                    const item = document.createElement('div');
+                    item.className = 'location-item';
+                    item.onclick = () => centerOnLocation(location);
+                    
+                    const countClass = location.count === 0 ? 'zero' : location.count < 5 ? 'low' : '';
+                    
+                    item.innerHTML = `
+                        <div>
+                            <div class="location-name">${location.name}</div>
+                            <div style="font-size: 0.8rem; color: #666;">
+                                ${location.address}<br>
+                                ${location.distance.toFixed(1)} miles away
+                            </div>
+                        </div>
+                        <div class="location-count ${countClass}">${location.count}</div>
+                    `;
+                    listContainer.appendChild(item);
+                });
+        }
+
+        function centerOnLocation(location) {
+            map.setCenter(location.position);
+            map.setZoom(15);
+            
+            const marker = markers.find(m => 
+                m.getPosition().lat() === location.position.lat() &&
+                m.getPosition().lng() === location.position.lng()
+            );
+            
+            if (marker) {
+                google.maps.event.trigger(marker, 'click');
+            }
+        }
+
+        function fitMapToMarkers() {
+            if (markers.length === 0) return;
+            
+            const bounds = new google.maps.LatLngBounds();
+            markers.forEach(marker => bounds.extend(marker.getPosition()));
+            map.fitBounds(bounds);
+        }
+
+        // UI helper functions
+        function showSetupForm() {
+            document.getElementById('setupForm').classList.add('active');
+            document.getElementById('mainPanel').style.display = 'none';
+            
+            // Pre-fill current values
+            document.getElementById('apiKey').value = appState.apiKey;
+            document.getElementById('sheetId').value = appState.sheetId;
+            document.getElementById('range').value = appState.range;
+            document.getElementById('userId').value = appState.userId;
+            document.getElementById('mapStyle').value = appState.mapStyle;
+        }
+
+        function hideSetupForm() {
+            document.getElementById('setupForm').classList.remove('active');
+            document.getElementById('mainPanel').style.display = 'block';
+        }
+
+        function loadDemoConfig() {
+            document.getElementById('apiKey').value = 'DEMO_MODE';
+            document.getElementById('sheetId').value = 'demo';
+            document.getElementById('range').value = 'Sheet1!A:C';
+            document.getElementById('userId').value = 'demo_user';
+            showAlert('Demo configuration loaded!', 'success');
+        }
+
+        // Event listeners setup
+        function setupEventListeners() {
+            // Main panel buttons
+            document.getElementById('initBtn').addEventListener('click', initializeApp);
+            document.getElementById('qrBtn').addEventListener('click', generateQR);
+            document.getElementById('refreshBtn').addEventListener('click', refreshData);
+            document.getElementById('exportBtn').addEventListener('click', exportData);
+            document.getElementById('setupBtn').addEventListener('click', showSetupForm);
+            
+            // Setup form buttons
+            document.getElementById('saveBtn').addEventListener('click', saveConfiguration);
+            document.getElementById('cancelBtn').addEventListener('click', hideSetupForm);
+            document.getElementById('demoBtn').addEventListener('click', loadDemoConfig);
+            document.getElementById('clearBtn').addEventListener('click', clearAllData);
+            
+            // Theme toggle
+            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+            
+            // Auto-refresh
+            document.getElementById('autoRefresh').addEventListener('change', setupAutoRefresh);
+            
+            // Filter buttons
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
+            });
+            
+            // Map controls
+            document.getElementById('centerBtn').addEventListener('click', () => {
+                if (userLocation) {
+                    map.setCenter(userLocation);
+                    map.setZoom(12);
+                }
+            });
+            
+            document.getElementById('fitBtn').addEventListener('click', fitMapToMarkers);
+            
+            document.getElementById('satelliteBtn').addEventListener('click', () => {
+                mapType = mapType === 'roadmap' ? 'satellite' : 'roadmap';
+                map.setMapTypeId(mapType);
+            });
+        }
+
+        // Check for auto-start (QR code users)
+        function checkAutoStart() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('autostart') === 'true';
+        }
+
+        // Initialize app on load
+        window.addEventListener('load', async () => {
+            console.log('🚀 DW Location Tracker v2.0 starting...');
+            updateStatus('Loading application...');
+            
+            // Load saved theme
+            const savedTheme = localStorage.getItem('theme');
+            if (savedTheme === 'dark') {
+                document.body.classList.add('dark-mode');
+                document.getElementById('themeToggle').textContent = '☀️ Light';
+            }
+            
+            // Setup event listeners
+            setupEventListeners();
+            
+            // Check for auto-start
+            if (checkAutoStart()) {
+                console.log('Auto-start detected');
+                appState.apiKey = 'DEMO_MODE';
+                appState.sheetId = 'demo';
+                await initializeApp();
+            } else {
+                // Normal flow
+                const configLoaded = await loadConfiguration();
+                if (configLoaded) {
+                    updateStatus('Configuration loaded! Ready to initialize.');
+                } else {
+                    updateStatus('Welcome! Please configure your settings to begin.');
+                }
+            }
+        });
+    </script>
+</body>
+</html>
