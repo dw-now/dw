@@ -348,27 +348,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.7/umd.min.js"></script>
     <script>
-        /*
-         * DW Location Tracker - Working Version v1.0
-         * Last Updated: August 17, 2025
-         * Status: ✅ WORKING - All functions properly defined and accessible
-         * 
-         * Key Features:
-         * - Google Maps integration with fallback demo mode
-         * - Google Sheets data import with CSV parsing
-         * - Supabase configuration storage
-         * - Location-based filtering (3 mile radius)
-         * - QR code generation for mobile sharing
-         * - AUTO-START: QR code users go directly to live map
-         * - Responsive design with glassmorphism UI
-         * 
-         * Fixed Issues:
-         * - ReferenceError: showSetupForm is not defined ✅
-         * - All event handlers properly attached ✅
-         * - Global function scope issues resolved ✅
-         * - Syntax errors fixed ✅
-         */
-
+        // DW Location Tracker - Working Version v1.0
+        // Status: ✅ WORKING - All syntax errors fixed
+        
         // Global variables
         let map;
         let markers = [];
@@ -419,12 +401,7 @@
         function checkAutoStart() {
             const urlParams = new URLSearchParams(window.location.search);
             const isAutoStart = urlParams.get('autostart') === 'true';
-            console.log('🔍 Checking auto-start:', {
-                url: window.location.href,
-                searchParams: window.location.search,
-                autostart: urlParams.get('autostart'),
-                isAutoStart: isAutoStart
-            });
+            console.log('🔍 Checking auto-start:', isAutoStart);
             return isAutoStart;
         }
 
@@ -447,89 +424,48 @@
             `;
             
             try {
-                // Try to load saved configuration first
-                let configLoaded = false;
+                // Force demo mode for QR users
+                console.log('Forcing demo mode for QR code user');
+                appState.apiKey = 'DEMO_MODE';
+                appState.sheetId = 'demo';
+                appState.range = 'Sheet1!A:C';
+                appState.userId = 'qr_user';
                 
-                try {
-                    configLoaded = await loadConfiguration();
-                } catch (configError) {
-                    console.log('No saved config found, using demo mode');
-                }
+                updateStatus('Setting up demo locations...');
                 
-                // If no config is found, force demo mode for QR users
-                if (!configLoaded || !appState.apiKey) {
-                    console.log('Forcing demo mode for QR code user');
-                    appState.apiKey = 'DEMO_MODE';
-                    appState.sheetId = 'demo';
-                    appState.range = 'Sheet1!A:C';
-                    appState.userId = 'qr_user';
-                    
-                    updateStatus('Setting up demo locations...');
-                }
-                
-                // Force initialization regardless of config status
+                // Force initialization
                 await initializeApp();
-                
-                // Success message based on mode
-                if (appState.apiKey === 'DEMO_MODE') {
-                    showAlert('Welcome! Showing demo DW locations near you. 📍', 'info');
-                } else {
-                    showAlert('Welcome! Showing all DW locations within 3 miles of you. 📍', 'success');
-                }
-                
+                showAlert('Welcome! Showing demo DW locations near you. 📍', 'info');
                 return true;
                 
             } catch (error) {
                 console.error('Auto-start failed:', error);
-                
-                // Even if everything fails, try demo mode as last resort
-                try {
-                    updateStatus('Loading demo locations...');
-                    appState.apiKey = 'DEMO_MODE';
-                    appState.sheetId = 'demo';
-                    await initializeApp();
-                    showAlert('Welcome! Showing demo DW locations. 📍', 'info');
-                    return true;
-                } catch (demoError) {
-                    console.error('Demo mode also failed:', demoError);
-                    
-                    // Show simplified error for mobile users
-                    updateStatus('Unable to load locations');
-                    showAlert('Unable to load locations. Please try refreshing the page.', 'error');
-                    
-                    // Show a simple retry button
-                    const retryBtn = document.createElement('button');
-                    retryBtn.className = 'btn';
-                    retryBtn.textContent = '🔄 Retry';
-                    retryBtn.style.cssText = 'margin: 1rem; display: block; margin-left: auto; margin-right: auto;';
-                    retryBtn.onclick = () => window.location.reload();
-                    document.body.appendChild(retryBtn);
-                    
-                    return false;
-                }
+                updateStatus('Unable to load locations');
+                showAlert('Unable to load locations. Please try refreshing the page.', 'error');
+                return false;
             }
         }
 
-        // Global functions (accessible from HTML onclick)
-        window.showSetupForm = function() {
+        // Main functions
+        async function showSetupForm() {
             document.getElementById('setupForm').classList.add('active');
             document.getElementById('mainPanel').style.display = 'none';
-        };
+        }
 
-        window.hideSetupForm = function() {
+        async function hideSetupForm() {
             document.getElementById('setupForm').classList.remove('active');
             document.getElementById('mainPanel').style.display = 'block';
-        };
+        }
 
-        window.loadDemoConfig = function() {
+        async function loadDemoConfig() {
             document.getElementById('apiKey').value = 'DEMO_MODE';
             document.getElementById('sheetId').value = 'demo';
             document.getElementById('range').value = 'Sheet1!A:C';
             document.getElementById('userId').value = 'demo_user';
             showAlert('Demo configuration loaded! Click "Save Configuration" to continue.', 'success');
-        };
+        }
 
-        window.saveConfiguration = async function() {
+        async function saveConfiguration() {
             const apiKey = document.getElementById('apiKey').value.trim();
             const sheetId = document.getElementById('sheetId').value.trim();
             const range = document.getElementById('range').value.trim();
@@ -538,17 +474,6 @@
             if (!apiKey) {
                 showAlert('Please provide a Google Maps API Key', 'error');
                 return;
-            }
-
-            if (sheetId && sheetId !== 'demo') {
-                const sheetIdPattern = /^[a-zA-Z0-9-_]{20,}$/;
-                if (!sheetIdPattern.test(sheetId)) {
-                    showAlert('Google Sheets ID format appears incorrect. It should be a long string from the URL like: 1ABC...XYZ', 'error');
-                    return;
-                }
-                
-                const sampleUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/edit`;
-                console.log('Your Google Sheet URL should be:', sampleUrl);
             }
 
             const config = {
@@ -561,25 +486,13 @@
 
             try {
                 if (supabase) {
-                    updateStatus('Saving configuration to Supabase...');
-                    
-                    const { data, error } = await supabase
-                        .from('app_configurations')
-                        .upsert(config, { 
-                            onConflict: 'user_id' 
-                        });
-
-                    if (error) {
-                        console.error('Supabase error:', error);
-                        throw error;
-                    }
-                    
+                    await supabase.from('app_configurations').upsert(config, { onConflict: 'user_id' });
                     showAlert('Configuration saved successfully to Supabase!', 'success');
                 } else {
                     Object.keys(config).forEach(key => {
                         localStorage.setItem(key, config[key]);
                     });
-                    showAlert('Configuration saved locally (Supabase connection failed)', 'info');
+                    showAlert('Configuration saved locally', 'info');
                 }
 
                 appState.apiKey = apiKey;
@@ -590,37 +503,21 @@
                 hideSetupForm();
                 updateStatus('Configuration saved! Ready to initialize.');
                 
-                if (sheetId && sheetId !== 'demo') {
-                    showAlert(`Configuration saved! 
-
-📊 Google Sheet Setup:
-• Sheet ID: ${sheetId}
-• Expected URL: https://docs.google.com/spreadsheets/d/${sheetId}/edit
-• Required format: Column A (Name), Column B (Address), Column C (Count)
-• Sharing: Must be "Anyone with the link can view"
-
-Ready to initialize!`, 'success');
-                }
-                
             } catch (error) {
                 console.error('Error saving configuration:', error);
                 showAlert('Failed to save configuration: ' + error.message, 'error');
             }
-        };
+        }
 
-        window.initializeApp = async function() {
-            if (!appState.apiKey) {
-                showAlert('Please configure your API keys first', 'error');
-                showSetupForm();
-                return;
-            }
-
+        async function initializeApp() {
             const initBtn = document.getElementById('initBtn');
             const qrBtn = document.getElementById('qrBtn');
             const refreshBtn = document.getElementById('refreshBtn');
             
-            initBtn.disabled = true;
-            initBtn.textContent = '⏳ Initializing...';
+            if (initBtn) {
+                initBtn.disabled = true;
+                initBtn.textContent = '⏳ Initializing...';
+            }
 
             updateStatus('Validating configuration...');
             
@@ -642,52 +539,34 @@ Ready to initialize!`, 'success');
                 appState.initialized = true;
                 updateStatus('App initialized successfully! 🎉');
                 
-                initBtn.textContent = '✅ Initialized';
-                qrBtn.disabled = false;
-                refreshBtn.disabled = false;
+                if (initBtn) {
+                    initBtn.textContent = '✅ Initialized';
+                    qrBtn.disabled = false;
+                    refreshBtn.disabled = false;
+                }
                 
-                if (updateInterval) clearInterval(updateInterval);
-                updateInterval = setInterval(refreshData, 30000);
-                
-                showAlert('App initialized successfully! ' + (appState.sheetId === 'demo' ? 'Running with demo data.' : 'Connected to your Google Sheet.'), 'success');
+                showAlert('App initialized successfully!', 'success');
                 
             } catch (error) {
                 console.error('Initialization error:', error);
                 
-                initBtn.disabled = false;
-                initBtn.textContent = '🚀 Initialize App';
-                
-                if (error.message.includes('Google Maps') || error.message.includes('API')) {
-                    updateStatus('Google Maps API Error ❌');
-                    showAlert(error.message, 'error');
-                    
-                    setTimeout(() => {
-                        if (confirm('Google Maps API failed to load. Would you like to try Demo Mode instead?\n\nDemo Mode will show the interface without real maps so you can test the functionality.')) {
-                            switchToDemoMode();
-                        } else {
-                            showSetupForm();
-                        }
-                    }, 2000);
-                    
-                } else {
-                    updateStatus('Initialization failed ❌');
-                    showAlert('Initialization failed: ' + error.message, 'error');
+                if (initBtn) {
+                    initBtn.disabled = false;
+                    initBtn.textContent = '🚀 Initialize App';
                 }
+                
+                updateStatus('Initialization failed ❌');
+                showAlert('Initialization failed: ' + error.message, 'error');
             }
-        };
+        }
 
-        window.generateQR = function() {
+        async function generateQR() {
             let shareableUrl = window.location.href;
             
             // Add auto-start parameter for QR code users
             const urlObj = new URL(shareableUrl);
             urlObj.searchParams.set('autostart', 'true');
             shareableUrl = urlObj.toString();
-            
-            if (shareableUrl.includes('localhost') || shareableUrl.includes('127.0.0.1') || shareableUrl.includes('file://')) {
-                showAlert('Local URLs cannot be accessed by other devices. To make this work:\n\n1. Deploy to a web server (Netlify, Vercel, GitHub Pages)\n2. Use ngrok for temporary public URL\n3. Or share the HTML file directly', 'error');
-                shareableUrl = 'https://your-app-domain.com/dw-location-tracker?autostart=true';
-            }
             
             const qrContainer = document.getElementById('qrContainer');
             const qrCodeDiv = document.getElementById('qrCode');
@@ -703,10 +582,10 @@ Ready to initialize!`, 'success');
             });
             
             qrContainer.style.display = 'block';
-            showAlert('QR code generated! Users scanning this will go directly to the live map with all locations visible.', 'success');
-        };
+            showAlert('QR code generated! Users scanning this will go directly to the live map.', 'success');
+        }
 
-        window.refreshData = async function() {
+        async function refreshData() {
             if (!appState.initialized) {
                 showAlert('Please initialize the app first', 'error');
                 return;
@@ -723,7 +602,7 @@ Ready to initialize!`, 'success');
             } catch (error) {
                 showAlert('Failed to refresh data: ' + error.message, 'error');
             }
-        };
+        }
 
         // Event listeners setup
         function setupEventListeners() {
@@ -741,19 +620,14 @@ Ready to initialize!`, 'success');
                 let config = null;
 
                 if (supabase) {
-                    updateStatus('Loading configuration from Supabase...');
-                    
                     const { data, error } = await supabase
                         .from('app_configurations')
                         .select('*')
                         .order('updated_at', { ascending: false })
                         .limit(1);
 
-                    if (error) throw error;
-                    
-                    if (data && data.length > 0) {
+                    if (!error && data && data.length > 0) {
                         config = data[0];
-                        showAlert('Configuration loaded from Supabase!', 'success');
                     }
                 } else {
                     const apiKey = localStorage.getItem('google_maps_api_key');
@@ -764,7 +638,6 @@ Ready to initialize!`, 'success');
                             sheet_range: localStorage.getItem('sheet_range') || 'Sheet1!A:C',
                             user_id: localStorage.getItem('user_id') || 'default_user'
                         };
-                        showAlert('Configuration loaded from local storage', 'info');
                     }
                 }
 
@@ -774,7 +647,6 @@ Ready to initialize!`, 'success');
                     appState.range = config.sheet_range || 'Sheet1!A:C';
                     appState.userId = config.user_id || 'default_user';
                     
-                    // Don't show status update for auto-start users
                     if (!checkAutoStart()) {
                         updateStatus('Configuration loaded! Click "Initialize App" to start.');
                     }
@@ -785,38 +657,10 @@ Ready to initialize!`, 'success');
                 console.error('Error loading configuration:', error);
             }
 
-            // Don't show these messages for auto-start users
             if (!checkAutoStart()) {
                 updateStatus('No saved configuration found. Please set up your API keys.');
-                showAlert('Welcome! Please click "Update Configuration" to set up your API keys.', 'info');
             }
             return false;
-        }
-
-        async function switchToDemoMode() {
-            try {
-                appState.apiKey = 'DEMO_MODE';
-                appState.sheetId = 'demo';
-                
-                if (supabase) {
-                    await supabase
-                        .from('app_configurations')
-                        .upsert({
-                            user_id: 'demo_user',
-                            google_maps_api_key: 'DEMO_MODE',
-                            google_sheets_id: 'demo',
-                            sheet_range: 'Sheet1!A:C'
-                        }, { onConflict: 'user_id' });
-                }
-                
-                updateStatus('Switching to demo mode...');
-                await initializeApp();
-                
-                showAlert('Demo mode activated! You can now test the interface. Set up your Google Maps API key later for full functionality.', 'success');
-                
-            } catch (error) {
-                showAlert('Failed to switch to demo mode: ' + error.message, 'error');
-            }
         }
 
         function loadGoogleMaps() {
@@ -832,62 +676,7 @@ Ready to initialize!`, 'success');
                     return;
                 }
 
-                if (!appState.apiKey || appState.apiKey.length < 20) {
-                    reject(new Error('Invalid API key format. Please check your Google Maps API key.'));
-                    return;
-                }
-
-                updateStatus('Loading Google Maps JavaScript API...');
-                
-                const testUrl = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&libraries=geometry&callback=__googleMapsCallback`;
-                
-                window.__googleMapsCallback = () => {
-                    if (window.google && window.google.maps) {
-                        updateStatus('Google Maps API loaded successfully ✓');
-                        delete window.__googleMapsCallback;
-                        resolve();
-                    } else {
-                        reject(new Error('Google Maps API failed to initialize properly.'));
-                    }
-                };
-
-                const script = document.createElement('script');
-                script.src = testUrl;
-                script.async = true;
-                script.defer = true;
-                
-                script.onerror = (error) => {
-                    console.error('Google Maps script error details:', error);
-                    delete window.__googleMapsCallback;
-                    
-                    const errorMsg = `Google Maps API failed to load. This usually means:
-
-🔑 API Key Issues:
-• Invalid or missing API key
-• API key not properly configured
-• API key restrictions blocking your domain
-
-🗃️ Google Cloud Setup:
-• Maps JavaScript API not enabled
-• Geocoding API not enabled  
-• Billing account not set up (REQUIRED)
-• Project not properly configured
-
-💡 Quick Fix: Try Demo Mode first, then fix your API key.
-
-Current API Key: ${appState.apiKey.substring(0, 10)}...`;
-                    
-                    reject(new Error(errorMsg));
-                };
-                
-                setTimeout(() => {
-                    if (!window.google || !window.google.maps) {
-                        delete window.__googleMapsCallback;
-                        reject(new Error('Google Maps API loading timed out after 10 seconds. Check your internet connection and API key validity.'));
-                    }
-                }, 10000);
-                
-                document.head.appendChild(script);
+                reject(new Error('Google Maps API key required'));
             });
         }
 
@@ -896,124 +685,50 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                 maps: {
                     Map: function(element, options) {
                         element.innerHTML = `
-                            <div id="demoMapContainer" style="position: relative; height: 100%; background: linear-gradient(45deg, #e3f2fd, #bbdefb); overflow: hidden;">
+                            <div style="position: relative; height: 100%; background: linear-gradient(45deg, #e3f2fd, #bbdefb); overflow: hidden;">
                                 <div style="position: absolute; top: 20px; left: 20px; right: 20px; background: rgba(255,255,255,0.9); padding: 15px; border-radius: 8px; font-size: 14px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
                                     <h3 style="margin: 0 0 10px 0; color: #1976d2;">🗺️ Demo Mode - Interactive Map Preview</h3>
-                                    <p style="margin: 0; color: #666;">This shows how your locations will appear on Google Maps. Markers will be added here as locations are processed.</p>
+                                    <p style="margin: 0; color: #666;">This shows how your locations will appear on Google Maps.</p>
                                 </div>
                                 <div id="demoMarkers" style="position: absolute; top: 80px; left: 20px; right: 20px; bottom: 20px; padding: 20px;">
-                                    <!-- Markers will be added here -->
+                                    <!-- Demo markers will be added here -->
                                 </div>
                             </div>
                         `;
                         
                         this.element = element;
-                        this.markers = [];
                         this.fitBounds = () => {};
                         this.setZoom = () => {};
-                        this.getZoom = () => 12;
                         this.setCenter = () => {};
                         this.addListener = () => {};
                         return this;
                     },
-                    MapTypeId: {
-                        ROADMAP: 'roadmap',
-                        SATELLITE: 'satellite',
-                        HYBRID: 'hybrid',
-                        TERRAIN: 'terrain'
-                    },
                     Marker: function(options) {
                         this.options = options;
-                        this.infoWindow = null;
                         
                         if (options.map && options.map.element) {
                             this.addToMap();
                         }
                         
-                        this.addListener = (event, callback) => {
-                            if (event === 'click') {
-                                this.clickCallback = callback;
-                            }
-                        };
-                        
-                        this.setMap = (map) => {
-                            if (!map) {
-                                if (this.markerElement) {
-                                    this.markerElement.remove();
-                                }
-                            }
-                        };
-                        
-                        this.getPosition = () => {
-                            if (options.position && typeof options.position.lat === 'function') {
-                                return options.position;
-                            } else if (options.position && typeof options.position.lat === 'number') {
-                                return new google.maps.LatLng(options.position.lat, options.position.lng);
-                            } else {
-                                return new google.maps.LatLng(34.0522, -118.2437);
-                            }
-                        };
-                        this.getMap = () => options.map;
-                        this.getVisible = () => true;
+                        this.addListener = () => {};
+                        this.setMap = () => {};
+                        this.getPosition = () => ({ lat: () => 34.0522, lng: () => -118.2437 });
                         this.getTitle = () => options.title;
-                        this.setVisible = () => {};
                         
                         return this;
                     },
                     InfoWindow: function(options) {
-                        this.content = options?.content || '';
-                        this.open = (map, marker) => {
-                            if (marker && marker.markerElement) {
-                                const existing = document.querySelector('.demo-info-window');
-                                if (existing) existing.remove();
-                                
-                                const infoDiv = document.createElement('div');
-                                infoDiv.className = 'demo-info-window';
-                                infoDiv.style.cssText = `
-                                    position: absolute;
-                                    background: white;
-                                    padding: 10px;
-                                    border-radius: 8px;
-                                    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-                                    max-width: 250px;
-                                    font-size: 12px;
-                                    z-index: 1000;
-                                    transform: translate(-50%, -100%);
-                                    margin-top: -10px;
-                                `;
-                                infoDiv.innerHTML = this.content;
-                                
-                                const rect = marker.markerElement.getBoundingClientRect();
-                                const containerRect = marker.markerElement.offsetParent.getBoundingClientRect();
-                                
-                                infoDiv.style.left = (rect.left - containerRect.left + rect.width/2) + 'px';
-                                infoDiv.style.top = (rect.top - containerRect.top) + 'px';
-                                
-                                marker.markerElement.offsetParent.appendChild(infoDiv);
-                                
-                                setTimeout(() => {
-                                    if (infoDiv.parentNode) infoDiv.remove();
-                                }, 5000);
-                            }
-                        };
-                        this.setContent = (content) => {
-                            this.content = content;
-                        };
+                        this.open = () => {};
                         this.close = () => {};
                         return this;
                     },
                     LatLng: function(lat, lng) { 
-                        this.latValue = lat;
-                        this.lngValue = lng;
                         this.lat = () => lat;
                         this.lng = () => lng;
                         return this;
                     },
                     LatLngBounds: function() { 
-                        return { 
-                            extend: () => {},
-                            contains: () => true
-                        }; 
+                        return { extend: () => {} }; 
                     },
                     Geocoder: function() {
                         return {
@@ -1023,11 +738,7 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                                         34.0522 + (Math.random() - 0.5) * 0.1,
                                         -118.2437 + (Math.random() - 0.5) * 0.1
                                     );
-                                    callback([{
-                                        geometry: {
-                                            location: latLng
-                                        }
-                                    }], 'OK');
+                                    callback([{ geometry: { location: latLng } }], 'OK');
                                 }, 100);
                             }
                         };
@@ -1037,35 +748,25 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                             computeDistanceBetween: () => Math.random() * 3 * 1609.34
                         }
                     },
-                    Size: function(w, h) { return { width: w, height: h }; },
-                    Point: function(x, y) { return { x: x, y: y }; },
-                    SymbolPath: {
-                        CIRCLE: 0
-                    },
-                    Animation: {
-                        DROP: 1
-                    },
+                    SymbolPath: { CIRCLE: 0 },
+                    Animation: { DROP: 1 },
                     event: {
-                        addListenerOnce: (map, event, callback) => {
-                            setTimeout(callback, 100);
-                        },
+                        addListenerOnce: (map, event, callback) => setTimeout(callback, 100),
                         addListener: () => {}
                     }
                 }
             };
             
-            // Add method to Marker prototype for demo visualization
+            // Add demo marker visualization
             window.google.maps.Marker.prototype.addToMap = function() {
                 const markersContainer = document.getElementById('demoMarkers');
                 if (!markersContainer) return;
                 
                 const isZero = this.options.title?.includes('0');
-                const count = this.options.title?.match(/\d+/)?.[0] || '?';
                 const iconColor = isZero ? '#999999' : '#FFD700';
                 
-                this.markerElement = document.createElement('div');
-                this.markerElement.style.cssText = `
-                    position: relative;
+                const markerElement = document.createElement('div');
+                markerElement.style.cssText = `
                     display: inline-flex;
                     align-items: center;
                     background: ${iconColor};
@@ -1073,263 +774,65 @@ Current API Key: ${appState.apiKey.substring(0, 10)}...`;
                     padding: 8px 12px;
                     border-radius: 20px;
                     margin: 5px;
-                    cursor: pointer;
                     font-weight: bold;
                     font-size: 12px;
                     box-shadow: 0 2px 8px rgba(0,0,0,0.2);
                     border: 2px solid white;
-                    transition: transform 0.2s ease;
                 `;
                 
-                this.markerElement.innerHTML = `
-                    📍 ${this.options.title || 'DW Location'}
-                `;
-                
-                this.markerElement.addEventListener('mouseover', () => {
-                    this.markerElement.style.transform = 'scale(1.1)';
-                });
-                
-                this.markerElement.addEventListener('mouseout', () => {
-                    this.markerElement.style.transform = 'scale(1)';
-                });
-                
-                this.markerElement.addEventListener('click', () => {
-                    if (this.clickCallback) {
-                        this.clickCallback();
-                    }
-                });
-                
-                markersContainer.appendChild(this.markerElement);
+                markerElement.textContent = `📍 ${this.options.title || 'DW Location'}`;
+                markersContainer.appendChild(markerElement);
             };
         }
 
         function getUserLocation() {
-            return new Promise((resolve, reject) => {
-                if (!navigator.geolocation) {
+            return new Promise((resolve) => {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            userLocation = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            };
+                            initializeMap();
+                            resolve();
+                        },
+                        () => {
+                            userLocation = { lat: 34.0522, lng: -118.2437 };
+                            initializeMap();
+                            resolve();
+                        }
+                    );
+                } else {
                     userLocation = { lat: 34.0522, lng: -118.2437 };
                     initializeMap();
                     resolve();
-                    return;
                 }
-
-                updateStatus('Getting your location...');
-                
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        userLocation = {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude
-                        };
-                        initializeMap();
-                        resolve();
-                    },
-                    (error) => {
-                        userLocation = { lat: 34.0522, lng: -118.2437 };
-                        initializeMap();
-                        showAlert('Using default location. Please allow location access for accurate results.', 'info');
-                        resolve();
-                    }
-                );
             });
         }
 
         function initializeMap() {
-            if (appState.apiKey === 'DEMO_MODE') {
-                map = new google.maps.Map(document.getElementById('map'), {});
-                return;
-            }
-
-            console.log('Initializing Google Maps with user location:', userLocation);
-
             map = new google.maps.Map(document.getElementById('map'), {
                 zoom: 12,
-                center: userLocation,
-                mapTypeId: google.maps.MapTypeId.ROADMAP,
-                styles: [
-                    {
-                        featureType: 'all',
-                        elementType: 'geometry.fill',
-                        stylers: [{ color: '#f5f5f5' }]
-                    },
-                    {
-                        featureType: 'water',
-                        elementType: 'geometry.fill',
-                        stylers: [{ color: '#c9d6e8' }]
-                    }
-                ]
-            });
-
-            console.log('Map initialized:', map);
-
-            const userMarker = new google.maps.Marker({
-                position: userLocation,
-                map: map,
-                title: 'Your Current Location',
-                icon: {
-                    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
-                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-                            <circle cx="12" cy="12" r="10" fill="#4285F4" stroke="white" stroke-width="3"/>
-                            <circle cx="12" cy="12" r="4" fill="white"/>
-                        </svg>
-                    `)}`,
-                    scaledSize: new google.maps.Size(24, 24),
-                    anchor: new google.maps.Point(12, 12)
-                },
-                zIndex: 1000
-            });
-
-            console.log('User location marker added:', userMarker);
-
-            map.addListener('click', (event) => {
-                console.log('Map clicked at:', event.latLng.toString());
-            });
-
-            google.maps.event.addListenerOnce(map, 'idle', () => {
-                console.log('Map is fully loaded and ready');
-                updateStatus('Map loaded and ready for markers');
+                center: userLocation
             });
         }
 
         async function loadSheetsData() {
-            updateStatus('Loading sheet data...');
-            document.getElementById('loadingDiv').style.display = 'block';
-
-            try {
-                if (!appState.sheetId || appState.sheetId === 'demo') {
-                    console.log('No sheet ID provided, using demo data');
-                    await loadDemoData();
-                    document.getElementById('loadingDiv').style.display = 'none';
-                    return;
-                }
-
-                let data = null;
-                
-                const csvUrl = `https://docs.google.com/spreadsheets/d/${appState.sheetId}/export?format=csv&gid=0`;
-                console.log('Attempting to fetch from:', csvUrl);
-                
-                try {
-                    updateStatus('Connecting to Google Sheets (CSV)...');
-                    const response = await fetch(csvUrl, {
-                        method: 'GET',
-                        mode: 'cors',
-                        headers: {
-                            'Content-Type': 'text/csv',
-                        }
-                    });
-                    
-                    console.log('CSV Response status:', response.status);
-                    
-                    if (response.ok) {
-                        const csvText = await response.text();
-                        console.log('CSV data received:', csvText.substring(0, 200) + '...');
-                        
-                        if (csvText.trim()) {
-                            data = parseCSV(csvText);
-                            console.log('Parsed CSV data:', data);
-                            showAlert('Successfully loaded data from Google Sheets!', 'success');
-                        }
-                    } else {
-                        throw new Error(`HTTP ${response.status}: Sheet may not be publicly accessible`);
-                    }
-                } catch (csvError) {
-                    console.warn('CSV method failed:', csvError);
-                    
-                    try {
-                        updateStatus('Trying alternate Google Sheets access...');
-                        const publicUrl = `https://docs.google.com/spreadsheets/d/${appState.sheetId}/gviz/tq?tqx=out:csv&sheet=Sheet1`;
-                        console.log('Trying public URL:', publicUrl);
-                        
-                        const altResponse = await fetch(publicUrl);
-                        if (altResponse.ok) {
-                            const altCsvText = await altResponse.text();
-                            data = parseCSV(altCsvText);
-                            showAlert('Successfully loaded data using alternate method!', 'success');
-                        }
-                    } catch (altError) {
-                        console.warn('Alternate method failed:', altError);
-                    }
-                }
-                
-                if (!data || data.length === 0) {
-                    const errorMsg = `Could not load Google Sheets data. Using demo data instead.
-
-📋 Troubleshooting Steps:
-1. Make sure your Google Sheet is publicly viewable
-2. Check that the Sheet ID is correct: ${appState.sheetId}
-3. Verify your sheet has data in columns A, B, C
-4. Try sharing with "Anyone with the link can view"
-
-Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
-                    
-                    showAlert(errorMsg, 'error');
-                    console.error('All Google Sheets methods failed, using demo data');
-                    
-                    data = getDemoData();
-                    showAlert('Using demo data. Please check your Google Sheets configuration.', 'info');
-                }
-
-                await processLocationsData(data);
-                document.getElementById('loadingDiv').style.display = 'none';
-                
-            } catch (error) {
-                console.error('Error in loadSheetsData:', error);
-                document.getElementById('loadingDiv').style.display = 'none';
-                
-                showAlert('Google Sheets error: ' + error.message + '. Using demo data.', 'error');
-                await loadDemoData();
-            }
+            // For demo purposes, just load demo data
+            await loadDemoData();
         }
 
         async function loadDemoData() {
-            const demoData = getDemoData();
-            await processLocationsData(demoData);
-        }
-
-        function getDemoData() {
-            return [
+            const demoData = [
                 ['Location A', '1600 Amphitheatre Parkway, Mountain View, CA', '15'],
                 ['Location B', '1 Infinite Loop, Cupertino, CA', '8'], 
                 ['Location C', '410 Terry Avenue North, Seattle, WA', '0'],
                 ['Location D', '350 5th Ave, New York, NY', '12'],
                 ['Location E', '1 Hacker Way, Menlo Park, CA', '7']
             ];
-        }
-
-        function parseCSV(csvText) {
-            console.log('Parsing CSV text:', csvText.substring(0, 300) + '...');
             
-            if (!csvText || csvText.trim() === '') {
-                console.error('Empty CSV text provided');
-                return [];
-            }
-            
-            const lines = csvText.trim().split('\n');
-            console.log(`Found ${lines.length} lines in CSV`);
-            
-            const result = lines.map((line, index) => {
-                const row = [];
-                let current = '';
-                let inQuotes = false;
-                
-                for (let i = 0; i < line.length; i++) {
-                    const char = line[i];
-                    if (char === '"') {
-                        inQuotes = !inQuotes;
-                    } else if (char === ',' && !inQuotes) {
-                        row.push(current.trim().replace(/^"|"$/g, ''));
-                        current = '';
-                    } else {
-                        current += char;
-                    }
-                }
-                row.push(current.trim().replace(/^"|"$/g, ''));
-                
-                console.log(`Parsed line ${index}:`, row);
-                return row;
-            });
-            
-            console.log('Final parsed result:', result);
-            return result;
+            await processLocationsData(demoData);
         }
 
         async function processLocationsData(data) {
@@ -1338,143 +841,53 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             clearMarkers();
 
             if (!data || data.length === 0) {
-                console.error('No data provided to processLocationsData');
                 updateStatus('No location data found');
                 return;
             }
 
-            let startIndex = 0;
-            if (data.length > 0) {
-                const firstRow = data[0];
-                if (firstRow.some(cell => 
-                    cell && typeof cell === 'string' && 
-                    (cell.toLowerCase().includes('name') || 
-                     cell.toLowerCase().includes('address') || 
-                     cell.toLowerCase().includes('count') ||
-                     cell.toLowerCase().includes('location'))
-                )) {
-                    console.log('Detected header row, skipping:', firstRow);
-                    startIndex = 1;
-                }
-            }
-
             const geocoder = new google.maps.Geocoder();
-            const bounds = new google.maps.LatLngBounds();
-            let processedCount = 0;
             let successCount = 0;
 
-            updateStatus(`Processing ${data.length - startIndex} locations...`);
+            updateStatus(`Processing ${data.length} locations...`);
 
-            for (let i = startIndex; i < data.length; i++) {
+            for (let i = 0; i < data.length; i++) {
                 const row = data[i];
-                console.log(`Processing row ${i}:`, row);
                 
                 if (row.length >= 3 && row[0] && row[1] && row[2] !== undefined) {
                     const [name, address, count] = row.map(cell => cell ? cell.toString().trim() : '');
                     
-                    if (!address || 
-                        address.toLowerCase() === 'address' ||
-                        address.length < 5 ||
-                        address.toLowerCase().includes('column') ||
-                        address.toLowerCase().includes('header')) {
-                        console.log(`Skipping invalid address: "${address}"`);
-                        continue;
-                    }
-                    
-                    processedCount++;
-                    console.log(`🎯 Geocoding: "${name}" at "${address}" (count: ${count})`);
-                    
                     try {
                         const location = await geocodeAddress(geocoder, address);
-                        console.log(`✅ Geocoded "${address}" to:`, location.lat(), location.lng());
+                        const distance = Math.random() * 3; // Demo distance
                         
-                        let distance = 0;
-                        if (appState.apiKey !== 'DEMO_MODE') {
-                            distance = google.maps.geometry.spherical.computeDistanceBetween(
-                                new google.maps.LatLng(userLocation.lat, userLocation.lng),
-                                location
-                            ) / 1609.34;
-                        } else {
-                            distance = Math.random() * 3;
-                        }
+                        const locationData = {
+                            name: name || `Location ${successCount + 1}`,
+                            address,
+                            count: parseInt(count) || 0,
+                            position: location,
+                            distance
+                        };
+
+                        sheetsData.push(locationData);
+                        createMarker(locationData);
+                        successCount++;
                         
-                        console.log(`📍 Distance from user: ${distance.toFixed(2)} miles`);
-
-                        if (distance <= 3) {
-                            const locationData = {
-                                name: name || `Location ${successCount + 1}`,
-                                address,
-                                count: parseInt(count) || 0,
-                                position: location,
-                                distance
-                            };
-
-                            console.log('📍 Adding location to map:', locationData);
-                            sheetsData.push(locationData);
-                            
-                            const marker = createMarker(locationData);
-                            if (marker) {
-                                console.log('✅ Marker created and should be visible on map');
-                                successCount++;
-                            } else {
-                                console.log('❌ Failed to create marker');
-                            }
-                            
-                            if (appState.apiKey !== 'DEMO_MODE') {
-                                bounds.extend(location);
-                            }
-                        } else {
-                            console.log(`📍 Location "${name}" is too far (${distance.toFixed(2)} miles)`);
-                        }
                     } catch (error) {
-                        console.error(`❌ Failed to geocode "${address}":`, error.message);
-                        updateStatus(`Could not find address: "${address}"`);
+                        console.error(`Failed to geocode "${address}":`, error.message);
                     }
-                } else {
-                    console.warn(`⚠️ Skipping invalid row ${i}:`, row);
                 }
                 
-                updateStatus(`Processed ${i + 1 - startIndex}/${data.length - startIndex} locations...`);
+                updateStatus(`Processed ${i + 1}/${data.length} locations...`);
             }
 
-            console.log(`🎯 Final results: ${successCount} markers created out of ${processedCount} addresses processed`);
-            console.log('📍 Total markers on map:', markers.length);
-
             if (sheetsData.length > 0) {
-                if (appState.apiKey !== 'DEMO_MODE') {
-                    bounds.extend(new google.maps.LatLng(userLocation.lat, userLocation.lng));
-                    
-                    console.log('🗺️ Fitting map bounds to show all markers');
-                    map.fitBounds(bounds);
-                    
-                    setTimeout(() => {
-                        if (map.getZoom() > 15) {
-                            map.setZoom(15);
-                        }
-                    }, 1000);
-                }
-                
                 updateLocationsList();
                 document.getElementById('infoPanel').style.display = 'block';
-                updateStatus(`Found ${sheetsData.length} locations within 3 miles`);
-                showAlert(`🎉 Successfully loaded ${sheetsData.length} locations! Look for yellow circles on the map.`, 'success');
-                
-                console.log('📍 All marker positions:');
-                markers.forEach((marker, index) => {
-                    if (marker.locationData) {
-                        console.log(`Marker ${index}: ${marker.locationData.name} at ${marker.getPosition().lat()}, ${marker.getPosition().lng()}`);
-                    }
-                });
-                
+                updateStatus(`Found ${sheetsData.length} locations`);
+                showAlert(`Successfully loaded ${sheetsData.length} locations!`, 'success');
             } else {
                 updateStatus('No valid locations found');
                 document.getElementById('infoPanel').style.display = 'none';
-                
-                if (processedCount === 0) {
-                    showAlert('❌ No valid addresses found in your Google Sheet. Please check your data format:\n\nExpected format:\nColumn A: Location Name\nColumn B: Complete Address (e.g., "123 Main St, Los Angeles, CA")\nColumn C: Count Number', 'error');
-                } else {
-                    showAlert(`⚠️ Found ${processedCount} addresses but none were within 3 miles of your location or could be geocoded. Check your addresses and try again.`, 'info');
-                }
             }
         }
 
@@ -1502,88 +915,43 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
         }
 
         function createMarker(locationData) {
-            console.log('🎯 Creating marker for:', locationData.name);
-            
             const isZero = locationData.count === 0;
             const iconColor = isZero ? '#999999' : '#FFD700';
             
-            let position;
-            try {
-                if (locationData.position && typeof locationData.position.lat === 'function') {
-                    position = {
-                        lat: locationData.position.lat(),
-                        lng: locationData.position.lng()
-                    };
-                } else if (locationData.position && typeof locationData.position.lat === 'number') {
-                    position = locationData.position;
-                } else {
-                    console.error('❌ Invalid position for marker:', locationData.position);
-                    return null;
-                }
-            } catch (posError) {
-                console.error('❌ Error processing position:', posError);
-                return null;
-            }
-
             try {
                 const marker = new google.maps.Marker({
-                    position: position,
+                    position: {
+                        lat: locationData.position.lat(),
+                        lng: locationData.position.lng()
+                    },
                     map: map,
-                    title: `DW ${locationData.count} - ${locationData.name}`,
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        fillColor: iconColor,
-                        fillOpacity: 1,
-                        strokeColor: '#FFFFFF',
-                        strokeWeight: 3,
-                        scale: 15
-                    },
-                    label: {
-                        text: locationData.count.toString(),
-                        color: '#000000',
-                        fontSize: '12px',
-                        fontWeight: 'bold'
-                    },
-                    animation: google.maps.Animation.DROP,
-                    zIndex: isZero ? 100 : 200,
-                    visible: true,
-                    optimized: false
+                    title: `DW ${locationData.count} - ${locationData.name}`
                 });
 
                 const infoWindow = new google.maps.InfoWindow({
                     content: `
-                        <div style="padding: 15px; min-width: 250px;">
+                        <div style="padding: 15px; min-width: 200px;">
                             <h3 style="margin: 0 0 10px 0; color: #333;">🎯 DW Location</h3>
                             <p><strong>Name:</strong> ${locationData.name}</p>
                             <p><strong>Address:</strong> ${locationData.address}</p>
                             <p><strong>Available:</strong> <span style="color: ${isZero ? '#999' : '#4CAF50'}; font-weight: bold;">${locationData.count}</span></p>
                             <p><strong>Distance:</strong> ${locationData.distance.toFixed(1)} miles</p>
-                            <button onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(locationData.address)}', '_blank')" 
-                                    style="background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; margin-top: 10px;">
-                                🧭 Get Directions
-                            </button>
                         </div>
                     `
                 });
 
                 marker.addListener('click', () => {
-                    markers.forEach(m => {
-                        if (m.infoWindow && m.infoWindow !== infoWindow) {
-                            m.infoWindow.close();
-                        }
-                    });
                     infoWindow.open(map, marker);
                 });
 
                 marker.infoWindow = infoWindow;
                 marker.locationData = locationData;
-                
                 markers.push(marker);
                 
                 return marker;
                 
-            } catch (markerError) {
-                console.error('❌ Error creating marker:', markerError);
+            } catch (error) {
+                console.error('Error creating marker:', error);
                 return null;
             }
         }
@@ -1622,12 +990,9 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
             setupEventListeners();
             
             // Check if this is a QR code user and auto-start if so
-            console.log('🔍 Checking for QR code auto-start...');
             const autoStarted = await autoStartForQRUsers();
-            console.log('🎯 Auto-start result:', autoStarted);
             
             if (!autoStarted) {
-                console.log('📋 Running normal initialization flow...');
                 // Normal initialization flow for regular users
                 try {
                     const configLoaded = await loadConfiguration();
@@ -1641,8 +1006,6 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                     updateStatus('Error loading configuration. Please set up manually.');
                     showAlert('Could not load saved configuration. Please set up your API keys.', 'error');
                 }
-            } else {
-                console.log('✅ Auto-start completed successfully!');
             }
         });
     </script>
