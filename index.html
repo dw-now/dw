@@ -631,7 +631,14 @@ Ready to initialize!`, 'success');
         // Check if this is an auto-start session (from QR code)
         function checkAutoStart() {
             const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('autostart') === 'true';
+            const isAutoStart = urlParams.get('autostart') === 'true';
+            console.log('🔍 Checking auto-start:', {
+                url: window.location.href,
+                searchParams: window.location.search,
+                autostart: urlParams.get('autostart'),
+                isAutoStart: isAutoStart
+            });
+            return isAutoStart;
         }
 
         // Auto-start function for QR code users
@@ -652,37 +659,66 @@ Ready to initialize!`, 'success');
             `;
             
             try {
-                // Try to load configuration automatically
-                const configLoaded = await loadConfiguration();
+                // Try to load saved configuration first
+                let configLoaded = false;
                 
-                if (configLoaded && appState.apiKey) {
-                    // Auto-initialize the app
-                    await initializeApp();
-                    showAlert('Welcome! Showing all DW locations within 3 miles of you. 📍', 'success');
-                    return true;
+                try {
+                    configLoaded = await loadConfiguration();
+                } catch (configError) {
+                    console.log('No saved config found, using demo mode');
+                }
+                
+                // If no config is found, force demo mode for QR users
+                if (!configLoaded || !appState.apiKey) {
+                    console.log('Forcing demo mode for QR code user');
+                    appState.apiKey = 'DEMO_MODE';
+                    appState.sheetId = 'demo';
+                    appState.range = 'Sheet1!A:C';
+                    appState.userId = 'qr_user';
+                    
+                    updateStatus('Setting up demo locations...');
+                }
+                
+                // Force initialization regardless of config status
+                await initializeApp();
+                
+                // Success message based on mode
+                if (appState.apiKey === 'DEMO_MODE') {
+                    showAlert('Welcome! Showing demo DW locations near you. 📍', 'info');
                 } else {
-                    // Fallback to demo mode for QR users
+                    showAlert('Welcome! Showing all DW locations within 3 miles of you. 📍', 'success');
+                }
+                
+                return true;
+                
+            } catch (error) {
+                console.error('Auto-start failed:', error);
+                
+                // Even if everything fails, try demo mode as last resort
+                try {
+                    updateStatus('Loading demo locations...');
                     appState.apiKey = 'DEMO_MODE';
                     appState.sheetId = 'demo';
                     await initializeApp();
                     showAlert('Welcome! Showing demo DW locations. 📍', 'info');
                     return true;
+                } catch (demoError) {
+                    console.error('Demo mode also failed:', demoError);
+                    
+                    // Show simplified error for mobile users
+                    updateStatus('Unable to load locations');
+                    showAlert('Unable to load locations. Please try refreshing the page.', 'error');
+                    
+                    // Show a simple retry button
+                    const retryBtn = document.createElement('button');
+                    retryBtn.className = 'btn';
+                    retryBtn.textContent = '🔄 Retry';
+                    retryBtn.style.cssText = 'margin: 1rem; display: block; margin-left: auto; margin-right: auto;';
+                    retryBtn.onclick = () => window.location.reload();
+                    document.body.appendChild(retryBtn);
+                    
+                    return false;
                 }
-            } catch (error) {
-                console.error('Auto-start failed:', error);
-                // Show simplified error for mobile users
-                updateStatus('Unable to load locations automatically');
-                showAlert('Unable to load locations. Please try refreshing the page.', 'error');
-                
-                // Show a simple retry button
-                const retryBtn = document.createElement('button');
-                retryBtn.className = 'btn';
-                retryBtn.textContent = '🔄 Retry';
-                retryBtn.style.cssText = 'margin: 1rem; display: block; margin-left: auto; margin-right: auto;';
-                retryBtn.onclick = () => window.location.reload();
-                document.body.appendChild(retryBtn);
-                
-                return false;
             }
         }
             document.getElementById('initBtn').addEventListener('click', initializeApp);
@@ -732,7 +768,10 @@ Ready to initialize!`, 'success');
                     appState.range = config.sheet_range || 'Sheet1!A:C';
                     appState.userId = config.user_id || 'default_user';
                     
-                    updateStatus('Configuration loaded! Click "Initialize App" to start.');
+                    // Don't show status update for auto-start users
+                    if (!checkAutoStart()) {
+                        updateStatus('Configuration loaded! Click "Initialize App" to start.');
+                    }
                     return true;
                 }
 
@@ -740,8 +779,11 @@ Ready to initialize!`, 'success');
                 console.error('Error loading configuration:', error);
             }
 
-            updateStatus('No saved configuration found. Please set up your API keys.');
-            showAlert('Welcome! Please click "Update Configuration" to set up your API keys.', 'info');
+            // Don't show these messages for auto-start users
+            if (!checkAutoStart()) {
+                updateStatus('No saved configuration found. Please set up your API keys.');
+                showAlert('Welcome! Please click "Update Configuration" to set up your API keys.', 'info');
+            }
             return false;
         }
 
@@ -1567,15 +1609,19 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
 
         // Initialize app on load
         window.addEventListener('load', async () => {
+            console.log('🚀 App loading started...');
             updateStatus('Loading application...');
             
             // Setup event listeners for all buttons
             setupEventListeners();
             
             // Check if this is a QR code user and auto-start if so
+            console.log('🔍 Checking for QR code auto-start...');
             const autoStarted = await autoStartForQRUsers();
+            console.log('🎯 Auto-start result:', autoStarted);
             
             if (!autoStarted) {
+                console.log('📋 Running normal initialization flow...');
                 // Normal initialization flow for regular users
                 try {
                     const configLoaded = await loadConfiguration();
@@ -1589,6 +1635,8 @@ Sheet URL: https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit`;
                     updateStatus('Error loading configuration. Please set up manually.');
                     showAlert('Could not load saved configuration. Please set up your API keys.', 'error');
                 }
+            } else {
+                console.log('✅ Auto-start completed successfully!');
             }
         });
     </script>
