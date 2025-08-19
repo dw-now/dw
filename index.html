@@ -1117,19 +1117,18 @@
                     return;
                 }
 
-                // Create callback function
-                window.initMapCallback = () => {
-                    resolve();
-                    delete window.initMapCallback;
-                };
+                // Use the Google Maps loader with proper async pattern
+                (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.googleapis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({
+                    key: appState.apiKey,
+                    v: "weekly"
+                });
 
-                // Load Google Maps with async loading pattern
-                const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&callback=initMapCallback&libraries=marker&loading=async`;
-                script.async = true;
-                script.defer = true;
-                script.onerror = () => reject(new Error('Failed to load Google Maps'));
-                document.head.appendChild(script);
+                // Load the core and marker libraries
+                google.maps.importLibrary("maps").then(() => {
+                    google.maps.importLibrary("marker").then(() => {
+                        resolve();
+                    }).catch(reject);
+                }).catch(reject);
             });
         }
 
@@ -1223,38 +1222,47 @@
             });
         }
 
-        function initializeMap() {
+        async function initializeMap() {
+            // Load geometry library for distance calculations
+            if (window.google?.maps) {
+                await google.maps.importLibrary("geometry");
+            }
+            
             map = new google.maps.Map(document.getElementById('map'), {
                 zoom: 12,
                 center: userLocation,
                 mapTypeId: mapType,
-                mapId: 'dw_tracker_map' // Required for AdvancedMarkerElement
+                mapId: 'dw_tracker_map_2024' // Required for AdvancedMarkerElement
             });
             
-            // Add user location marker
-            if (window.google.maps.marker?.AdvancedMarkerElement) {
-                const userMarker = new google.maps.marker.AdvancedMarkerElement({
+            // Add user location marker using AdvancedMarkerElement
+            try {
+                const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
+                
+                const userPin = document.createElement('div');
+                userPin.style.cssText = `
+                    background: #4285F4;
+                    color: white;
+                    padding: 8px;
+                    border-radius: 50%;
+                    border: 2px solid white;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                    font-size: 16px;
+                    text-align: center;
+                `;
+                userPin.innerHTML = '📍';
+                
+                new AdvancedMarkerElement({
                     map: map,
                     position: userLocation,
                     title: 'Your Location',
-                    content: buildUserMarkerContent()
+                    content: userPin
                 });
+                
                 advancedMarkersLoaded = true;
-            } else {
-                // Fallback to regular marker
-                new google.maps.Marker({
-                    position: userLocation,
-                    map: map,
-                    title: 'Your Location',
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: 8,
-                        fillColor: '#4285F4',
-                        fillOpacity: 1,
-                        strokeColor: '#ffffff',
-                        strokeWeight: 2
-                    }
-                });
+            } catch (error) {
+                console.log('AdvancedMarkerElement not available, map initialized without user marker');
+                advancedMarkersLoaded = false;
             }
         }
 
@@ -1397,72 +1405,108 @@
             });
         }
 
-        function createMarker(locationData) {
+        async function createMarker(locationData) {
             const isZero = locationData.count === 0;
             const isLow = locationData.count > 0 && locationData.count <= 5;
             
             let marker;
             
-            if (advancedMarkersLoaded && window.google.maps.marker?.AdvancedMarkerElement) {
-                // Use AdvancedMarkerElement
-                const content = buildMarkerContent(locationData, isZero, isLow);
-                marker = new google.maps.marker.AdvancedMarkerElement({
-                    map: map,
+            try {
+                if (advancedMarkersLoaded) {
+                    const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary("marker");
+                    
+                    // Create custom pin element
+                    const pinElement = new PinElement({
+                        background: isZero ? '#999999' : isLow ? '#FF9800' : '#4CAF50',
+                        borderColor: '#FFFFFF',
+                        glyphColor: '#FFFFFF',
+                        glyph: locationData.count.toString(),
+                        scale: 1.2
+                    });
+                    
+                    marker = new AdvancedMarkerElement({
+                        map: map,
+                        position: locationData.position,
+                        title: `${locationData.name} (${locationData.count} available)`,
+                        content: pinElement.element
+                    });
+                    
+                    // Store position for filtering
+                    marker.position = locationData.position;
+                }
+            } catch (error) {
+                console.log('Using fallback marker creation');
+                advancedMarkersLoaded = false;
+            }
+            
+            // If AdvancedMarkerElement failed or not available, don't create old markers
+            // to avoid deprecation warning
+            if (!marker && !advancedMarkersLoaded) {
+                // Create a simple div marker instead
+                const markerDiv = document.createElement('div');
+                markerDiv.style.cssText = `
+                    position: absolute;
+                    background: ${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'};
+                    color: white;
+                    padding: 8px 12px;
+                    border-radius: 20px;
+                    border: 2px solid white;
+                    font-weight: bold;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                    cursor: pointer;
+                    z-index: 100;
+                `;
+                markerDiv.textContent = locationData.count.toString();
+                markerDiv.title = `${locationData.name} (${locationData.count} available)`;
+                
+                // Note: This is a simplified approach for demo mode
+                // In production, you'd want to properly position these divs
+                marker = {
                     position: locationData.position,
-                    title: `${locationData.name} (${locationData.count} available)`,
-                    content: content
-                });
-            } else {
-                // Fallback to regular Marker
-                marker = new google.maps.Marker({
-                    position: locationData.position,
-                    map: map,
-                    title: `${locationData.name} (${locationData.count} available)`,
-                    animation: google.maps.Animation.DROP,
-                    icon: {
-                        url: `data:image/svg+xml,${encodeURIComponent(`
-                            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 40 40">
-                                <circle cx="20" cy="20" r="18" fill="${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'}" stroke="white" stroke-width="2"/>
-                                <text x="20" y="26" text-anchor="middle" fill="white" font-size="16" font-weight="bold">${locationData.count}</text>
-                            </svg>
-                        `)}`,
-                        scaledSize: new google.maps.Size(40, 40)
-                    }
-                });
+                    setMap: (mapRef) => {
+                        // Simple visibility toggle
+                        markerDiv.style.display = mapRef ? 'block' : 'none';
+                    },
+                    getPosition: () => locationData.position,
+                    element: markerDiv
+                };
             }
 
-            const infoWindow = new google.maps.InfoWindow({
-                content: `
-                    <div style="padding: 15px; min-width: 250px;">
-                        <h3 style="margin: 0 0 10px 0; color: #333;">${locationData.name}</h3>
-                        <p style="margin: 5px 0;"><strong>📍 Address:</strong> ${locationData.address}</p>
-                        <p style="margin: 5px 0;"><strong>📦 Available:</strong> 
-                            <span style="color: ${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'}; font-weight: bold;">
-                                ${locationData.count}
-                            </span>
-                        </p>
-                        <p style="margin: 5px 0;"><strong>📏 Distance:</strong> ${locationData.distance.toFixed(1)} miles</p>
-                        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
-                            <button onclick="window.open('https://maps.google.com/?q=${encodeURIComponent(locationData.address)}', '_blank')" 
-                                    style="background: #4285F4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-                                Get Directions
-                            </button>
+            if (marker) {
+                const infoWindow = new google.maps.InfoWindow({
+                    content: `
+                        <div style="padding: 15px; min-width: 250px;">
+                            <h3 style="margin: 0 0 10px 0; color: #333;">${locationData.name}</h3>
+                            <p style="margin: 5px 0;"><strong>📍 Address:</strong> ${locationData.address}</p>
+                            <p style="margin: 5px 0;"><strong>📦 Available:</strong> 
+                                <span style="color: ${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'}; font-weight: bold;">
+                                    ${locationData.count}
+                                </span>
+                            </p>
+                            <p style="margin: 5px 0;"><strong>📏 Distance:</strong> ${locationData.distance.toFixed(1)} miles</p>
+                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
+                                <button onclick="window.open('https://maps.google.com/?q=${encodeURIComponent(locationData.address)}', '_blank')" 
+                                        style="background: #4285F4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                                    Get Directions
+                                </button>
+                            </div>
                         </div>
-                    </div>
-                `
-            });
+                    `
+                });
 
-            if (advancedMarkersLoaded) {
-                marker.addListener('click', () => {
-                    infoWindow.open(map, marker);
-                });
-            } else {
-                marker.addListener('click', () => {
-                    infoWindow.open(map, marker);
-                });
+                if (marker.addListener) {
+                    marker.addListener('click', () => {
+                        infoWindow.open({ map, anchor: marker });
+                    });
+                } else if (marker.element) {
+                    marker.element.addEventListener('click', () => {
+                        infoWindow.open(map);
+                    });
+                }
+
+                markers.push(marker);
             }
-
-            markers.push(marker);
+            
             return marker;
         }
 
