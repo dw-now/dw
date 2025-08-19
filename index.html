@@ -624,46 +624,48 @@
     <div class="setup-form" id="setupForm">
         <h3>⚙️ Configuration Settings</h3>
         
-        <div style="background: #e3f4ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
-            <h4 style="margin: 0 0 0.5rem 0; color: #1976d2;">📋 Google Sheets Setup Instructions:</h4>
-            <ol style="margin: 0; padding-left: 1.5rem; color: #555; font-size: 0.9rem;">
+        <div style="background: #c8e6c9; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #4CAF50;">
+            <h4 style="margin: 0 0 0.5rem 0; color: #2e7d32;">✨ Easiest Method - No API Needed!</h4>
+            <ol style="margin: 0; padding-left: 1.5rem; color: #333; font-size: 0.9rem;">
                 <li>Open your Google Sheet</li>
-                <li>Click <strong>Share</strong> → Change to <strong>"Anyone with link can view"</strong></li>
-                <li>Go to <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" target="_blank" style="color: #1976d2;">Google Cloud Console</a></li>
-                <li>Enable <strong>Google Sheets API</strong> for your project</li>
-                <li>Your API key needs both Maps and Sheets API enabled</li>
-                <li>Sheet structure: Column A (Name), B (Address), C (Count)</li>
+                <li>Click <strong>File → Share → Publish to web</strong></li>
+                <li>Select <strong>Entire Document</strong> and <strong>CSV</strong> format</li>
+                <li>Click <strong>Publish</strong> and confirm</li>
+                <li>Enter just your Sheet ID below - no API key needed!</li>
+            </ol>
+        </div>
+        
+        <div style="background: #e3f4ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: #1976d2;">📋 Alternative: Use Google Sheets API</h4>
+            <ol style="margin: 0; padding-left: 1.5rem; color: #555; font-size: 0.9rem;">
+                <li>Enable Google Sheets API in Cloud Console</li>
+                <li>Add Sheets API permission to your API key</li>
+                <li>Make sheet viewable by "Anyone with link"</li>
             </ol>
         </div>
         
         <div class="input-group">
-            <label for="apiKey">Google Maps API Key:</label>
-            <input type="password" id="apiKey" placeholder="Enter your Google Maps API key">
+            <label for="apiKey">Google Maps API Key: <span style="color: red;">*</span></label>
+            <input type="password" id="apiKey" placeholder="Enter your Google Maps API key" required>
         </div>
         <div class="input-group">
-            <label for="sheetId">Google Sheets ID:</label>
-            <input type="text" id="sheetId" placeholder="Enter your Google Sheets ID (from the URL)">
-            <small style="color: #666;">Find this in your sheet URL: docs.google.com/spreadsheets/d/<strong>[SHEET_ID]</strong>/edit</small>
+            <label for="sheetId">Google Sheets ID: <span style="color: red;">*</span></label>
+            <input type="text" id="sheetId" placeholder="Enter your Google Sheets ID (from the URL)" required>
+            <small style="color: #666;">Find this in: docs.google.com/spreadsheets/d/<strong>[SHEET_ID]</strong>/edit</small>
         </div>
         <div class="input-group">
             <label for="range">Sheet Range:</label>
             <input type="text" id="range" value="Sheet1!A:C" placeholder="e.g., Sheet1!A:C">
-            <small style="color: #666;">Format: SheetName!StartCell:EndCell (e.g., Sheet1!A2:C100)</small>
+            <small style="color: #666;">Leave default if your data starts at A1</small>
         </div>
         <div class="input-group">
             <label for="sheetsApiKey">Google Sheets API Key (optional):</label>
-            <input type="password" id="sheetsApiKey" placeholder="Same as Maps API key if enabled">
-            <small style="color: #666;">Leave blank to use the same API key as Maps</small>
+            <input type="password" id="sheetsApiKey" placeholder="Only needed if not using publish method">
+            <small style="color: #666;">Skip this if you published your sheet to web</small>
         </div>
         <div class="input-group">
             <label for="userId">User ID:</label>
-            <input type="text" id="userId" placeholder="Unique identifier">
-        </div>
-        
-        <div style="background: #fff3cd; padding: 0.75rem; border-radius: 8px; margin: 1rem 0; border-left: 4px solid #ffc107;">
-            <strong>⚠️ Troubleshooting:</strong><br>
-            <small>If you get a 400 error, ensure your sheet is public and Sheets API is enabled.<br>
-            If you get a 403 error, check that your API key has the right permissions.</small>
+            <input type="text" id="userId" placeholder="Unique identifier (optional)">
         </div>
         
         <button class="btn" id="saveBtn">💾 Save Configuration</button>
@@ -1297,122 +1299,140 @@
             return div;
         }
 
-        // Google Sheets API integration
+        // Google Sheets API integration with multiple methods
         async function loadSheetsData() {
-            if (!appState.sheetId || !appState.sheetsApiKey) {
-                console.log('Missing Sheets configuration, loading demo data');
+            if (!appState.sheetId) {
+                console.log('No Sheet ID configured, loading demo data');
                 await loadDemoData();
                 return;
             }
 
-            try {
-                // First, try to load with the API key
-                const url = `https://sheets.googleapis.com/v4/spreadsheets/${appState.sheetId}/values/${appState.range}?key=${appState.sheetsApiKey}`;
-                
-                console.log('Fetching from Google Sheets:', url);
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => null);
-                    console.error('Sheets API Error:', errorData);
-                    
-                    if (response.status === 400) {
-                        throw new Error(`
-                            Google Sheets API Error (400 Bad Request).
-                            Please check:
-                            1. Sheets API is enabled in Google Cloud Console
-                            2. Your sheet is shared as "Anyone with link can view"
-                            3. The Sheet ID and range are correct
-                            4. API key has Sheets API access
-                        `);
-                    } else if (response.status === 403) {
-                        throw new Error(`
-                            Access Denied (403).
-                            The sheet might be private or the API key lacks permissions.
-                            Make sure your sheet is publicly viewable.
-                        `);
-                    } else if (response.status === 404) {
-                        throw new Error(`
-                            Sheet not found (404).
-                            Check that the Sheet ID is correct and the sheet exists.
-                        `);
-                    } else {
-                        throw new Error(`Sheets API error: ${response.status} ${response.statusText}`);
-                    }
-                }
-                
-                const data = await response.json();
-                
-                if (data.values && data.values.length > 0) {
-                    console.log('Sheets data loaded successfully:', data.values.length, 'rows');
-                    
-                    // Skip header row if present
-                    const hasHeader = isNaN(parseInt(data.values[0][2]));
-                    const dataRows = hasHeader ? data.values.slice(1) : data.values;
-                    
-                    await processLocationsData(dataRows);
-                    showAlert(`Loaded ${dataRows.length} locations from Google Sheets`, 'success');
-                } else {
-                    showAlert('No data found in the specified range', 'warning');
-                    await loadDemoData();
-                }
-            } catch (error) {
-                console.error('Error loading Sheets data:', error);
-                
-                // Show detailed setup instructions
-                const setupMessage = `
-                    <div style="text-align: left;">
-                        <strong>Failed to load Google Sheets data</strong><br><br>
-                        ${error.message}<br><br>
-                        <strong>Quick Setup Guide:</strong><br>
-                        1. Open your Google Sheet<br>
-                        2. Click Share → "Anyone with link" → Viewer<br>
-                        3. Enable Sheets API in <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" target="_blank">Google Cloud Console</a><br>
-                        4. Copy Sheet ID from URL: docs.google.com/spreadsheets/d/<strong>[SHEET_ID]</strong>/edit<br>
-                        5. Using demo data for now...<br><br>
-                        <a href="https://developers.google.com/sheets/api/quickstart/js" target="_blank">Full Setup Guide →</a>
-                    </div>
-                `;
-                
-                // Create a more detailed alert
-                const alertDiv = document.getElementById('alertDiv');
-                alertDiv.innerHTML = setupMessage;
-                alertDiv.style.display = 'block';
-                alertDiv.className = 'alert warning';
-                
-                setTimeout(() => {
-                    alertDiv.style.display = 'none';
-                }, 15000); // Show for 15 seconds
-                
+            // Try multiple methods to load the data
+            let dataLoaded = false;
+
+            // Method 1: Try published CSV (no API key needed!)
+            if (!dataLoaded) {
+                dataLoaded = await loadSheetsViaPublishedCSV();
+            }
+
+            // Method 2: Try Sheets API with API key
+            if (!dataLoaded && appState.sheetsApiKey) {
+                dataLoaded = await loadSheetsViaAPI();
+            }
+
+            // Method 3: Fall back to demo data
+            if (!dataLoaded) {
+                console.log('All methods failed, loading demo data');
                 await loadDemoData();
             }
         }
 
-        // Alternative: Load via public CSV export (no API key needed)
-        async function loadSheetsViaCSV() {
-            if (!appState.sheetId) {
-                await loadDemoData();
-                return;
-            }
-
+        // Method 1: Load via published CSV (NO API KEY NEEDED!)
+        async function loadSheetsViaPublishedCSV() {
             try {
-                // Try to load as public CSV (sheet must be published to web)
-                const csvUrl = `https://docs.google.com/spreadsheets/d/${appState.sheetId}/export?format=csv&gid=0`;
+                // For this to work, the sheet must be published:
+                // File → Share → Publish to web → Link → CSV → Publish
+                const csvUrl = `https://docs.google.com/spreadsheets/d/e/${appState.sheetId}/pub?output=csv`;
                 
-                const response = await fetch(csvUrl, {
-                    mode: 'no-cors' // This won't work due to CORS, but shows the approach
-                });
+                console.log('Trying to load via published CSV (no API needed)...');
                 
-                // Note: This approach won't work from browser due to CORS
-                // You'd need a proxy server or the sheet must be published to web
+                // Try with a CORS proxy (free service)
+                const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(csvUrl)}`;
                 
-                console.log('CSV approach requires sheet to be published to web');
-                throw new Error('CSV loading requires additional setup');
+                const response = await fetch(proxyUrl);
                 
+                if (response.ok) {
+                    const csvText = await response.text();
+                    const rows = parseCSV(csvText);
+                    
+                    if (rows.length > 0) {
+                        // Skip header if present
+                        const hasHeader = isNaN(parseInt(rows[0][2]));
+                        const dataRows = hasHeader ? rows.slice(1) : rows;
+                        
+                        await processLocationsData(dataRows);
+                        showAlert(`✅ Loaded ${dataRows.length} locations from published sheet (no API needed!)`, 'success');
+                        return true;
+                    }
+                }
             } catch (error) {
-                console.error('CSV loading failed:', error);
-                await loadDemoData();
+                console.log('Published CSV method failed:', error);
             }
+            return false;
+        }
+
+        // Method 2: Load via Sheets API
+        async function loadSheetsViaAPI() {
+            try {
+                const url = `https://sheets.googleapis.com/v4/spreadsheets/${appState.sheetId}/values/${appState.range}?key=${appState.sheetsApiKey}`;
+                
+                console.log('Trying Sheets API...');
+                const response = await fetch(url);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.values && data.values.length > 0) {
+                        const hasHeader = isNaN(parseInt(data.values[0][2]));
+                        const dataRows = hasHeader ? data.values.slice(1) : data.values;
+                        
+                        await processLocationsData(dataRows);
+                        showAlert(`✅ Loaded ${dataRows.length} locations from Google Sheets API`, 'success');
+                        return true;
+                    }
+                } else {
+                    const errorDetails = await response.json().catch(() => null);
+                    console.error('Sheets API error:', response.status, errorDetails);
+                    
+                    if (response.status === 400 || response.status === 403) {
+                        // Show instructions for alternative method
+                        showPublishInstructions();
+                    }
+                }
+            } catch (error) {
+                console.error('Sheets API failed:', error);
+            }
+            return false;
+        }
+
+        // Parse CSV text into array
+        function parseCSV(csvText) {
+            const lines = csvText.split('\n').filter(line => line.trim());
+            return lines.map(line => {
+                // Simple CSV parser (handles basic cases)
+                const matches = line.match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g);
+                if (matches) {
+                    return matches.map(field => field.replace(/^"|"$/g, '').trim());
+                }
+                return [];
+            }).filter(row => row.length >= 3);
+        }
+
+        // Show instructions for publishing sheet
+        function showPublishInstructions() {
+            const message = `
+                <div style="text-align: left;">
+                    <strong>📊 Easy Fix - No API Key Needed!</strong><br><br>
+                    <strong>Publish your sheet to web (recommended):</strong><br>
+                    1. Open your Google Sheet<br>
+                    2. Click <strong>File → Share → Publish to web</strong><br>
+                    3. Choose <strong>Entire Document</strong> and <strong>CSV</strong> format<br>
+                    4. Click <strong>Publish</strong><br>
+                    5. Click OK on the confirmation<br>
+                    6. Try loading again - no API setup needed!<br><br>
+                    <strong>Why this works:</strong> Publishing creates a public CSV that doesn't need API authentication.<br><br>
+                    <a href="https://support.google.com/docs/answer/183965" target="_blank" style="color: #1976d2;">Learn more about publishing →</a>
+                </div>
+            `;
+            
+            const alertDiv = document.getElementById('alertDiv');
+            alertDiv.innerHTML = message;
+            alertDiv.style.display = 'block';
+            alertDiv.className = 'alert info';
+            
+            setTimeout(() => {
+                alertDiv.style.display = 'none';
+            }, 20000);
         }
 
         async function loadDemoData() {
