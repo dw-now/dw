@@ -553,6 +553,16 @@
             border-right: 8px solid transparent;
             border-top: 8px solid white;
         }
+        
+        .range-indicator {
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            display: inline-block;
+            margin: 0.5rem;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
@@ -580,7 +590,7 @@
         </div>
         <div class="stat-card">
             <div class="stat-value" id="nearbyCount">0</div>
-            <div class="stat-label">Within 5 Miles</div>
+            <div class="stat-label">Within 3 Miles</div>
         </div>
         <div class="stat-card">
             <div class="stat-value" id="lastUpdate">--:--</div>
@@ -591,7 +601,7 @@
     <div class="filter-controls" id="filterControls" style="display: none;">
         <button class="filter-btn active" data-filter="all">All Locations</button>
         <button class="filter-btn" data-filter="available">Available Only</button>
-        <button class="filter-btn" data-filter="nearby">Within 5 Miles</button>
+        <button class="filter-btn" data-filter="nearby">Within 3 Miles</button>
         <button class="filter-btn" data-filter="zero">Out of Stock</button>
     </div>
 
@@ -603,7 +613,7 @@
         
         <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
             <button class="btn" id="initBtn">🚀 Initialize App</button>
-            <button class="btn btn-secondary" id="qrBtn" disabled>📱 Generate QR</button>
+            <button class="btn btn-secondary" id="qrBtn" disabled>📱 Generate 3-Mile QR</button>
             <button class="btn btn-secondary" id="refreshBtn" disabled>🔄 Refresh</button>
             <button class="btn btn-warning" id="exportBtn" disabled>📥 Export Data</button>
             <button class="btn btn-danger" id="setupBtn">⚙️ Settings</button>
@@ -617,6 +627,18 @@
                 <option value="60000">1 minute</option>
                 <option value="300000">5 minutes</option>
                 <option value="600000">10 minutes</option>
+            </select>
+        </div>
+        
+        <div class="input-group">
+            <label for="rangeSelector">QR Code Range:</label>
+            <select id="rangeSelector">
+                <option value="1">1 Mile</option>
+                <option value="2">2 Miles</option>
+                <option value="3" selected>3 Miles</option>
+                <option value="5">5 Miles</option>
+                <option value="10">10 Miles</option>
+                <option value="all">All Locations</option>
             </select>
         </div>
     </div>
@@ -714,6 +736,7 @@
         let mapType = 'roadmap';
         let autoRefreshInterval;
         let advancedMarkersLoaded = false;
+        let selectedRange = 3; // Default 3 miles
 
         // Supabase configuration
         const SUPABASE_URL = 'https://xjggcomfaarjfipmwjkc.supabase.co';
@@ -761,7 +784,7 @@
         function updateStats() {
             const total = sheetsData.length;
             const available = sheetsData.filter(l => l.count > 0).length;
-            const nearby = sheetsData.filter(l => l.distance <= 5).length;
+            const nearby = sheetsData.filter(l => l.distance <= 3).length; // Changed to 3 miles
             const now = new Date();
             const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
             
@@ -796,7 +819,7 @@
                     filteredData = sheetsData.filter(l => l.count > 0);
                     break;
                 case 'nearby':
-                    filteredData = sheetsData.filter(l => l.distance <= 5);
+                    filteredData = sheetsData.filter(l => l.distance <= 3); // Changed to 3 miles
                     break;
                 case 'zero':
                     filteredData = sheetsData.filter(l => l.count === 0);
@@ -896,168 +919,82 @@
             map.setMapTypeId(mapType);
         }
 
-        // Main functions
-        async function showSetupForm() {
-            document.getElementById('setupForm').classList.add('active');
-            document.getElementById('mainPanel').style.display = 'none';
-            
-            // Load existing values if available
-            if (appState.apiKey) document.getElementById('apiKey').value = appState.apiKey;
-            if (appState.sheetId) document.getElementById('sheetId').value = appState.sheetId;
-            if (appState.range) document.getElementById('range').value = appState.range;
-            if (appState.sheetsApiKey) document.getElementById('sheetsApiKey').value = appState.sheetsApiKey;
-            if (appState.userId) document.getElementById('userId').value = appState.userId;
-        }
-
-        async function hideSetupForm() {
-            document.getElementById('setupForm').classList.remove('active');
-            document.getElementById('mainPanel').style.display = 'block';
-        }
-
-        async function loadDemoConfig() {
-            document.getElementById('apiKey').value = 'DEMO_MODE';
-            document.getElementById('sheetId').value = 'demo';
-            document.getElementById('range').value = 'Sheet1!A:C';
-            document.getElementById('sheetsApiKey').value = '';
-            document.getElementById('userId').value = 'demo_user';
-            showAlert('Demo configuration loaded!', 'success');
-        }
-
-        async function saveConfiguration() {
-            const apiKey = document.getElementById('apiKey').value.trim();
-            const sheetId = document.getElementById('sheetId').value.trim();
-            const range = document.getElementById('range').value.trim();
-            const sheetsApiKey = document.getElementById('sheetsApiKey').value.trim() || apiKey;
-            const userId = document.getElementById('userId').value.trim() || 'default_user';
-
-            if (!apiKey) {
-                showAlert('Please provide a Google Maps API Key', 'error');
-                return;
-            }
-
-            const config = {
-                user_id: userId,
-                google_maps_api_key: apiKey,
-                google_sheets_id: sheetId,
-                sheet_range: range,
-                sheets_api_key: sheetsApiKey,
-                updated_at: new Date().toISOString()
-            };
-
-            try {
-                if (supabase) {
-                    await supabase.from('app_configurations').upsert(config, { onConflict: 'user_id' });
-                    showAlert('Configuration saved to cloud!', 'success');
-                } else {
-                    Object.keys(config).forEach(key => {
-                        localStorage.setItem(key, config[key]);
-                    });
-                    showAlert('Configuration saved locally', 'info');
-                }
-
-                appState.apiKey = apiKey;
-                appState.sheetId = sheetId;
-                appState.range = range;
-                appState.sheetsApiKey = sheetsApiKey;
-                appState.userId = userId;
-
-                hideSetupForm();
-                updateStatus('Configuration saved! Ready to initialize.');
-                
-            } catch (error) {
-                console.error('Error saving configuration:', error);
-                showAlert('Failed to save configuration: ' + error.message, 'error');
-            }
-        }
-
-        async function initializeApp() {
-            const initBtn = document.getElementById('initBtn');
-            const qrBtn = document.getElementById('qrBtn');
-            const refreshBtn = document.getElementById('refreshBtn');
-            const exportBtn = document.getElementById('exportBtn');
-            
-            if (initBtn) {
-                initBtn.disabled = true;
-                initBtn.textContent = '⏳ Initializing...';
-            }
-
-            updateStatus('Initializing application...');
-            
-            try {
-                await loadGoogleMaps();
-                updateStatus('Google Maps loaded ✓');
-                
-                await getUserLocation();
-                updateStatus('Location obtained ✓');
-                
-                if (appState.sheetId && appState.sheetId !== 'demo') {
-                    updateStatus('Loading Google Sheets data...');
-                    await loadSheetsData();
-                } else {
-                    updateStatus('Loading demo data...');
-                    await loadDemoData();
-                }
-                
-                appState.initialized = true;
-                updateStatus('Ready! Tracking locations in real-time 🎉');
-                
-                if (initBtn) {
-                    initBtn.textContent = '✅ Initialized';
-                    qrBtn.disabled = false;
-                    refreshBtn.disabled = false;
-                    exportBtn.disabled = false;
-                }
-                
-                document.getElementById('filterControls').style.display = 'flex';
-                updateStats();
-                showAlert('App initialized successfully!', 'success');
-                
-            } catch (error) {
-                console.error('Initialization error:', error);
-                
-                if (initBtn) {
-                    initBtn.disabled = false;
-                    initBtn.textContent = '🚀 Initialize App';
-                }
-                
-                updateStatus('Initialization failed ❌');
-                showAlert('Initialization failed: ' + error.message, 'error');
-            }
-        }
-
-        async function generateQR() {
-            // Check if we have location data
+        // FIXED: Generate QR for locations within selected range
+        async function generateDynamicRangeQR() {
             if (!sheetsData || sheetsData.length === 0) {
                 showAlert('Please load locations first before generating QR code', 'error');
                 return;
             }
             
-            // Generate Google Maps URL directly - no dialog, just create the QR
-            let mapsUrl = '';
+            // Get selected range from dropdown
+            const rangeValue = document.getElementById('rangeSelector').value;
+            selectedRange = rangeValue === 'all' ? Infinity : parseFloat(rangeValue);
             
-            if (sheetsData.length === 1) {
-                // Single location - direct navigation
-                const location = sheetsData[0];
-                mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(location.address)}&travelmode=driving`;
-            } else {
-                // Multiple locations - show all on map for selection
-                // Using search query to show multiple pins
-                const locations = sheetsData.slice(0, 10); // Limit to 10 for URL length
-                const query = locations.map(loc => `${loc.name} ${loc.address}`).join(' / ');
-                mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+            // Filter locations within selected range
+            const nearbyLocations = selectedRange === Infinity 
+                ? sheetsData 
+                : sheetsData.filter(location => location.distance <= selectedRange);
+            
+            if (nearbyLocations.length === 0) {
+                showAlert(`No locations found within ${selectedRange} miles`, 'warning');
+                return;
             }
             
-            console.log('Generating QR for Google Maps URL:', mapsUrl);
+            console.log(`Found ${nearbyLocations.length} locations within ${selectedRange} miles`);
             
-            // Display QR code
+            // Create Google Maps URL with all nearby locations
+            let mapsUrl = '';
+            
+            if (nearbyLocations.length === 1) {
+                // Single location - direct navigation
+                const location = nearbyLocations[0];
+                mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(location.address)}&travelmode=driving`;
+            } else {
+                // Multiple locations - create a custom map search URL
+                // This will show all locations as search results in Google Maps
+                const searchQuery = nearbyLocations
+                    .map(loc => `${loc.name} ${loc.address}`)
+                    .join(' OR ');
+                
+                // Alternative: Create waypoints URL for navigation
+                if (nearbyLocations.length <= 10) {
+                    // Google Maps supports up to 10 waypoints
+                    const origin = 'Current+Location';
+                    const destination = encodeURIComponent(nearbyLocations[nearbyLocations.length - 1].address);
+                    const waypoints = nearbyLocations.slice(0, -1)
+                        .map(loc => encodeURIComponent(loc.address))
+                        .join('|');
+                    
+                    mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
+                } else {
+                    // Too many locations for waypoints, use search instead
+                    mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery)}`;
+                }
+            }
+            
+            // Display QR container with dynamic content
             const qrContainer = document.getElementById('qrContainer');
             qrContainer.innerHTML = `
-                <h3>📱 QR Code for Google Maps Navigation</h3>
+                <h3>📱 Locations Within ${selectedRange === Infinity ? 'All' : selectedRange + ' Mile'} Range</h3>
+                <div class="range-indicator">
+                    ${nearbyLocations.length} location${nearbyLocations.length > 1 ? 's' : ''} found
+                </div>
                 <div id="qrCodeDisplay" style="margin: 20px auto; width: 256px;"></div>
-                <p style="color: #666;">
-                    <strong>Scan this code to open locations in Google Maps</strong><br>
-                    Users can select any location and navigate there
-                </p>
+                <div style="max-height: 200px; overflow-y: auto; text-align: left; margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+                    <strong>Included Locations:</strong>
+                    <ul style="margin: 10px 0; padding-left: 20px;">
+                        ${nearbyLocations
+                            .sort((a, b) => a.distance - b.distance)
+                            .map(loc => `
+                                <li style="margin: 5px 0;">
+                                    <strong>${loc.name}</strong> (${loc.distance.toFixed(1)} mi)<br>
+                                    <span style="color: #666; font-size: 0.9em;">
+                                        ${loc.address} - Available: ${loc.count}
+                                    </span>
+                                </li>
+                            `).join('')}
+                    </ul>
+                </div>
                 <div style="margin-top: 20px;">
                     <a href="${mapsUrl}" target="_blank" class="btn btn-secondary">
                         📍 Test in Google Maps
@@ -1069,14 +1006,14 @@
                 <details style="margin-top: 15px;">
                     <summary style="cursor: pointer; color: #666;">Advanced Options</summary>
                     <div style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px;">
-                        <button onclick="generateNavigationQR()" class="btn btn-secondary" style="margin: 5px;">
-                            🚗 Route with Waypoints
+                        <button onclick="generateOptimizedRoute()" class="btn btn-secondary" style="margin: 5px;">
+                            🚗 Optimize Route Order
                         </button>
-                        <button onclick="generateNearestQR()" class="btn btn-secondary" style="margin: 5px;">
-                            📍 Nearest Location Only
+                        <button onclick="generateAvailableOnlyQR()" class="btn btn-secondary" style="margin: 5px;">
+                            ✅ Available Locations Only
                         </button>
-                        <button onclick="generateAllLocationsQR()" class="btn btn-secondary" style="margin: 5px;">
-                            🗺️ All Locations View
+                        <button onclick="generateCustomMapInstructions()" class="btn btn-secondary" style="margin: 5px;">
+                            🗺️ Create Custom Map
                         </button>
                     </div>
                 </details>
@@ -1084,7 +1021,7 @@
             
             qrContainer.style.display = 'block';
             
-            // Generate the actual QR code
+            // Generate QR code
             new QRCode(document.getElementById('qrCodeDisplay'), {
                 text: mapsUrl,
                 width: 256,
@@ -1094,49 +1031,90 @@
                 correctLevel: QRCode.CorrectLevel.H
             });
             
-            showAlert('QR code generated! This will open Google Maps directly.', 'success');
+            showAlert(`QR code generated for ${nearbyLocations.length} locations within ${selectedRange === Infinity ? 'all' : selectedRange + ' mile'} range!`, 'success');
         }
         
-        // Generate navigation route QR
-        window.generateNavigationQR = function() {
-            if (!sheetsData || sheetsData.length === 0) return;
+        // Generate optimized route
+        window.generateOptimizedRoute = function() {
+            const rangeValue = document.getElementById('rangeSelector').value;
+            const range = rangeValue === 'all' ? Infinity : parseFloat(rangeValue);
+            const nearbyLocations = range === Infinity 
+                ? sheetsData 
+                : sheetsData.filter(loc => loc.distance <= range);
             
-            let mapsUrl = '';
-            if (sheetsData.length === 1) {
-                mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(sheetsData[0].address)}&travelmode=driving`;
-            } else {
-                // Create route with waypoints (max 9 waypoints + 1 destination = 10 total)
-                const routeLocations = sheetsData.slice(0, 10);
-                const destination = encodeURIComponent(routeLocations[routeLocations.length - 1].address);
-                const waypoints = routeLocations.slice(0, -1).map(loc => 
-                    encodeURIComponent(loc.address)
-                ).join('|');
-                
-                mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
+            if (nearbyLocations.length === 0) return;
+            
+            // Sort by distance for optimal route
+            const sorted = nearbyLocations.sort((a, b) => a.distance - b.distance);
+            
+            // Take up to 10 locations (Google Maps limit)
+            const routeLocations = sorted.slice(0, 10);
+            
+            const origin = 'Current+Location';
+            const destination = encodeURIComponent(routeLocations[routeLocations.length - 1].address);
+            const waypoints = routeLocations.slice(0, -1)
+                .map(loc => encodeURIComponent(loc.address))
+                .join('|');
+            
+            const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
+            
+            updateQRCode(mapsUrl, `Optimized route for ${routeLocations.length} nearest locations`);
+        }
+        
+        // Generate QR for available locations only
+        window.generateAvailableOnlyQR = function() {
+            const rangeValue = document.getElementById('rangeSelector').value;
+            const range = rangeValue === 'all' ? Infinity : parseFloat(rangeValue);
+            const availableNearby = sheetsData.filter(loc => 
+                loc.count > 0 && (range === Infinity || loc.distance <= range)
+            );
+            
+            if (availableNearby.length === 0) {
+                showAlert('No available locations within range', 'warning');
+                return;
             }
             
-            updateQRCode(mapsUrl, 'Navigation Route - Opens driving directions');
+            const searchQuery = availableNearby
+                .map(loc => `${loc.name} ${loc.address}`)
+                .join(' OR ');
+            
+            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery)}`;
+            
+            updateQRCode(mapsUrl, `${availableNearby.length} available locations within ${range === Infinity ? 'all' : range + ' mile'} range`);
         }
         
-        // Generate nearest location QR
-        window.generateNearestQR = function() {
-            if (!sheetsData || sheetsData.length === 0) return;
+        // Generate custom map instructions
+        window.generateCustomMapInstructions = function() {
+            const rangeValue = document.getElementById('rangeSelector').value;
+            const range = rangeValue === 'all' ? Infinity : parseFloat(rangeValue);
+            const nearbyLocations = range === Infinity 
+                ? sheetsData 
+                : sheetsData.filter(loc => loc.distance <= range);
             
-            const nearest = sheetsData.sort((a, b) => a.distance - b.distance)[0];
-            const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(nearest.address)}&travelmode=driving`;
+            // Create CSV for Google My Maps
+            const csvContent = 'Name,Address,Available,Distance (miles)\n' + 
+                nearbyLocations.map(loc => 
+                    `"${loc.name}","${loc.address}","${loc.count}","${loc.distance.toFixed(1)}"`
+                ).join('\n');
             
-            updateQRCode(mapsUrl, `Navigate to nearest: ${nearest.name}`);
-        }
-        
-        // Generate all locations QR
-        window.generateAllLocationsQR = function() {
-            if (!sheetsData || sheetsData.length === 0) return;
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const csvUrl = window.URL.createObjectURL(blob);
             
-            // Create a search query showing all locations
-            const query = sheetsData.map(loc => `${loc.name} ${loc.address}`).join(' / ');
-            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
-            
-            updateQRCode(mapsUrl, `View all ${sheetsData.length} locations on map`);
+            const output = document.getElementById('qrCodeDisplay').parentElement;
+            output.innerHTML += `
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                    <h4>Create Custom Google My Maps</h4>
+                    <ol style="margin: 10px 0; padding-left: 20px; font-size: 0.9em;">
+                        <li>Download the CSV file</li>
+                        <li>Go to <a href="https://mymaps.google.com" target="_blank">Google My Maps</a></li>
+                        <li>Import the CSV to create a custom map</li>
+                        <li>Share the map and generate QR from the link</li>
+                    </ol>
+                    <a href="${csvUrl}" download="dw_locations_${range}_miles.csv" class="btn">
+                        📥 Download CSV (${nearbyLocations.length} locations)
+                    </a>
+                </div>
+            `;
         }
         
         // Helper function to update QR code
@@ -1154,9 +1132,9 @@
                 });
                 
                 // Update description
-                const descElement = document.querySelector('#qrContainer p');
-                if (descElement) {
-                    descElement.innerHTML = `<strong>${description}</strong><br>Scan to open in Google Maps`;
+                const rangeIndicator = document.querySelector('.range-indicator');
+                if (rangeIndicator) {
+                    rangeIndicator.textContent = description;
                 }
                 
                 // Update test link
@@ -1166,1093 +1144,3 @@
                 }
             }
         }
-
-        async function refreshData() {
-            if (!appState.initialized) {
-                showAlert('Please initialize the app first', 'error');
-                return;
-            }
-
-            try {
-                updateStatus('Refreshing data...');
-                showLoadingOverlay(true);
-                
-                if (appState.sheetId && appState.sheetId !== 'demo') {
-                    await loadSheetsData();
-                } else {
-                    await loadDemoData();
-                }
-                
-                updateStats();
-                showLoadingOverlay(false);
-                showAlert('Data refreshed!', 'success');
-            } catch (error) {
-                showLoadingOverlay(false);
-                showAlert('Failed to refresh: ' + error.message, 'error');
-            }
-        }
-
-        async function loadConfiguration() {
-            try {
-                // Load theme preference
-                const savedTheme = localStorage.getItem('theme');
-                if (savedTheme === 'dark') {
-                    document.body.classList.add('dark-mode');
-                    document.getElementById('themeToggle').textContent = '☀️ Light';
-                }
-
-                let config = null;
-
-                if (supabase) {
-                    const { data, error } = await supabase
-                        .from('app_configurations')
-                        .select('*')
-                        .order('updated_at', { ascending: false })
-                        .limit(1);
-
-                    if (!error && data && data.length > 0) {
-                        config = data[0];
-                    }
-                } else {
-                    const apiKey = localStorage.getItem('google_maps_api_key');
-                    if (apiKey) {
-                        config = {
-                            google_maps_api_key: apiKey,
-                            google_sheets_id: localStorage.getItem('google_sheets_id') || '',
-                            sheet_range: localStorage.getItem('sheet_range') || 'Sheet1!A:C',
-                            sheets_api_key: localStorage.getItem('sheets_api_key') || apiKey,
-                            user_id: localStorage.getItem('user_id') || 'default_user'
-                        };
-                    }
-                }
-
-                if (config) {
-                    appState.apiKey = config.google_maps_api_key;
-                    appState.sheetId = config.google_sheets_id || '';
-                    appState.range = config.sheet_range || 'Sheet1!A:C';
-                    appState.sheetsApiKey = config.sheets_api_key || config.google_maps_api_key;
-                    appState.userId = config.user_id || 'default_user';
-                    
-                    updateStatus('Configuration loaded! Click "Initialize App" to start.');
-                    return true;
-                }
-
-            } catch (error) {
-                console.error('Error loading configuration:', error);
-            }
-
-            updateStatus('No saved configuration. Please configure settings.');
-            return false;
-        }
-
-        function loadGoogleMaps() {
-            return new Promise((resolve, reject) => {
-                if (window.google && window.google.maps) {
-                    resolve();
-                    return;
-                }
-
-                if (appState.apiKey === 'DEMO_MODE') {
-                    createMockGoogleMaps();
-                    resolve();
-                    return;
-                }
-
-                // Use the Google Maps loader with proper async pattern
-                (g=>{var h,a,k,p="The Google Maps JavaScript API",c="google",l="importLibrary",q="__ib__",m=document,b=window;b=b[c]||(b[c]={});var d=b.maps||(b.maps={}),r=new Set,e=new URLSearchParams,u=()=>h||(h=new Promise(async(f,n)=>{await (a=m.createElement("script"));e.set("libraries",[...r]+"");for(k in g)e.set(k.replace(/[A-Z]/g,t=>"_"+t[0].toLowerCase()),g[k]);e.set("callback",c+".maps."+q);a.src=`https://maps.googleapis.com/maps/api/js?`+e;d[q]=f;a.onerror=()=>h=n(Error(p+" could not load."));a.nonce=m.querySelector("script[nonce]")?.nonce||"";m.head.append(a)}));d[l]?console.warn(p+" only loads once. Ignoring:",g):d[l]=(f,...n)=>r.add(f)&&u().then(()=>d[l](f,...n))})({
-                    key: appState.apiKey,
-                    v: "weekly"
-                });
-
-                // Load the core and marker libraries
-                google.maps.importLibrary("maps").then(() => {
-                    google.maps.importLibrary("marker").then(() => {
-                        resolve();
-                    }).catch(reject);
-                }).catch(reject);
-            });
-        }
-
-        function createMockGoogleMaps() {
-            window.google = {
-                maps: {
-                    Map: function(element, options) {
-                        element.innerHTML = `
-                            <div style="position: relative; height: 100%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
-                                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: white;">
-                                    <h2>📍 Demo Map Mode</h2>
-                                    <p>Locations are being tracked</p>
-                                </div>
-                            </div>
-                        `;
-                        
-                        this.element = element;
-                        this.fitBounds = () => {};
-                        this.setZoom = () => {};
-                        this.setCenter = () => {};
-                        this.setMapTypeId = () => {};
-                        return this;
-                    },
-                    Marker: function(options) {
-                        this.position = options.position;
-                        this.setMap = () => {};
-                        this.getPosition = () => this.position;
-                        return this;
-                    },
-                    InfoWindow: function() {
-                        this.open = () => {};
-                        this.close = () => {};
-                        return this;
-                    },
-                    LatLng: function(lat, lng) { 
-                        this.lat = () => lat;
-                        this.lng = () => lng;
-                        return this;
-                    },
-                    LatLngBounds: function() { 
-                        return { extend: () => {} }; 
-                    },
-                    Geocoder: function() {
-                        return {
-                            geocode: (request, callback) => {
-                                setTimeout(() => {
-                                    const latLng = new google.maps.LatLng(
-                                        34.0522 + (Math.random() - 0.5) * 0.2,
-                                        -118.2437 + (Math.random() - 0.5) * 0.2
-                                    );
-                                    callback([{ geometry: { location: latLng } }], 'OK');
-                                }, 100);
-                            }
-                        };
-                    },
-                    geometry: {
-                        spherical: {
-                            computeDistanceBetween: (from, to) => Math.random() * 10 * 1609.34
-                        }
-                    },
-                    SymbolPath: { CIRCLE: 0 },
-                    Animation: { DROP: 1 }
-                }
-            };
-        }
-
-        function getUserLocation() {
-            return new Promise((resolve) => {
-                if (navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition(
-                        (position) => {
-                            userLocation = {
-                                lat: position.coords.latitude,
-                                lng: position.coords.longitude
-                            };
-                            initializeMap();
-                            resolve();
-                        },
-                        () => {
-                            // Default to Los Angeles
-                            userLocation = { lat: 34.0522, lng: -118.2437 };
-                            initializeMap();
-                            resolve();
-                        }
-                    );
-                } else {
-                    userLocation = { lat: 34.0522, lng: -118.2437 };
-                    initializeMap();
-                    resolve();
-                }
-            });
-        }
-
-        async function initializeMap() {
-            // Load geometry library for distance calculations
-            if (window.google?.maps) {
-                await google.maps.importLibrary("geometry");
-            }
-            
-            map = new google.maps.Map(document.getElementById('map'), {
-                zoom: 12,
-                center: userLocation,
-                mapTypeId: mapType,
-                mapId: 'dw_tracker_map_2024' // Required for AdvancedMarkerElement
-            });
-            
-            // Add user location marker using AdvancedMarkerElement
-            try {
-                const { AdvancedMarkerElement } = await google.maps.importLibrary("marker");
-                
-                const userPin = document.createElement('div');
-                userPin.style.cssText = `
-                    background: #4285F4;
-                    color: white;
-                    padding: 8px;
-                    border-radius: 50%;
-                    border: 2px solid white;
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                    font-size: 16px;
-                    text-align: center;
-                `;
-                userPin.innerHTML = '📍';
-                
-                new AdvancedMarkerElement({
-                    map: map,
-                    position: userLocation,
-                    title: 'Your Location',
-                    content: userPin
-                });
-                
-                advancedMarkersLoaded = true;
-            } catch (error) {
-                console.log('AdvancedMarkerElement not available, map initialized without user marker');
-                advancedMarkersLoaded = false;
-            }
-        }
-
-        function buildUserMarkerContent() {
-            const div = document.createElement('div');
-            div.innerHTML = `
-                <div style="background: #4285F4; color: white; padding: 8px; border-radius: 50%; border: 2px solid white;">
-                    📍
-                </div>
-            `;
-            return div;
-        }
-
-        // Google Sheets loading - CSV method only (no API needed!)
-        async function loadSheetsData() {
-            if (!appState.sheetId) {
-                console.log('No Sheet ID configured, loading demo data');
-                await loadDemoData();
-                return;
-            }
-
-            console.log('Loading sheet data via published CSV...');
-            console.log('Sheet ID:', appState.sheetId);
-            
-            // ONLY use published CSV method - no API calls!
-            const dataLoaded = await loadSheetsViaPublishedCSV();
-            
-            if (!dataLoaded) {
-                console.log('Could not load from published sheet, using demo data');
-                showPublishInstructions();
-                await loadDemoData();
-            }
-        }
-
-        // Load via published CSV (NO API KEY NEEDED!)
-        async function loadSheetsViaPublishedCSV() {
-            try {
-                // Multiple URL formats to try
-                const urlFormats = [
-                    // Format 1: Direct CSV export (works if sheet is viewable by anyone with link)
-                    `https://docs.google.com/spreadsheets/d/${appState.sheetId}/export?format=csv`,
-                    // Format 2: Published web format
-                    `https://docs.google.com/spreadsheets/d/e/${appState.sheetId}/pub?output=csv`,
-                    // Format 3: Visualization API format
-                    `https://docs.google.com/spreadsheets/d/${appState.sheetId}/gviz/tq?tqx=out:csv`
-                ];
-                
-                // CORS proxies to try
-                const corsProxies = [
-                    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
-                    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-                    (url) => `https://cors.eu.org/${url}`,
-                    (url) => `https://cors-anywhere.herokuapp.com/${url}`
-                ];
-                
-                // Try each URL format with each proxy
-                for (const urlFormat of urlFormats) {
-                    console.log('Trying URL format:', urlFormat.substring(0, 60) + '...');
-                    
-                    for (const proxyFn of corsProxies) {
-                        const proxyUrl = proxyFn(urlFormat);
-                        
-                        try {
-                            console.log('Attempting proxy fetch...');
-                            const response = await fetch(proxyUrl, {
-                                method: 'GET',
-                                headers: {
-                                    'Accept': 'text/csv,text/plain,*/*'
-                                },
-                                // Add timeout
-                                signal: AbortSignal.timeout(5000)
-                            }).catch(err => {
-                                console.log('Fetch failed:', err.message);
-                                return null;
-                            });
-                            
-                            if (response && response.ok) {
-                                const text = await response.text();
-                                
-                                // Check if we got valid CSV/data
-                                if (text && !text.includes('<!DOCTYPE') && !text.includes('<html')) {
-                                    console.log('Got response, checking for CSV data...');
-                                    
-                                    // Try to parse as CSV
-                                    const rows = parseCSV(text);
-                                    
-                                    if (rows.length > 0) {
-                                        console.log(`Parsed ${rows.length} rows from CSV`);
-                                        
-                                        // Check if first row is header
-                                        const hasHeader = isNaN(parseInt(rows[0][2])) || 
-                                                         rows[0][0].toLowerCase().includes('name') ||
-                                                         rows[0][0].toLowerCase().includes('location');
-                                        
-                                        const dataRows = hasHeader ? rows.slice(1) : rows;
-                                        
-                                        if (dataRows.length > 0) {
-                                            console.log(`Processing ${dataRows.length} data rows`);
-                                            await processLocationsData(dataRows);
-                                            showAlert(`✅ Successfully loaded ${dataRows.length} locations from your Google Sheet!`, 'success');
-                                            return true;
-                                        }
-                                    }
-                                }
-                            }
-                        } catch (error) {
-                            console.log('Proxy attempt failed:', error.message);
-                            continue;
-                        }
-                    }
-                }
-                
-                console.log('All attempts to load sheet failed');
-                return false;
-                
-            } catch (error) {
-                console.error('Error in loadSheetsViaPublishedCSV:', error);
-                return false;
-            }
-        }
-
-        // Enhanced CSV parser
-        function parseCSV(csvText) {
-            // Handle different line endings
-            const lines = csvText.split(/\r?\n/).filter(line => line.trim());
-            const rows = [];
-            
-            for (const line of lines) {
-                const row = [];
-                let current = '';
-                let inQuotes = false;
-                
-                for (let i = 0; i < line.length; i++) {
-                    const char = line[i];
-                    
-                    if (char === '"') {
-                        if (inQuotes && line[i + 1] === '"') {
-                            // Escaped quote
-                            current += '"';
-                            i++;
-                        } else {
-                            inQuotes = !inQuotes;
-                        }
-                    } else if ((char === ',' || char === '\t') && !inQuotes) {
-                        row.push(current.trim());
-                        current = '';
-                    } else {
-                        current += char;
-                    }
-                }
-                
-                // Add the last field
-                if (current || row.length > 0) {
-                    row.push(current.trim());
-                }
-                
-                // Only add rows with at least 3 columns
-                if (row.length >= 3 && row.some(cell => cell)) {
-                    rows.push(row);
-                }
-            }
-            
-            console.log(`Parsed ${rows.length} valid rows from CSV`);
-            return rows;
-        }
-
-        // Show instructions for publishing sheet
-        function showPublishInstructions() {
-            const message = `
-                <div style="text-align: left; max-width: 500px;">
-                    <strong>📊 Setup Required - Publish Your Sheet</strong><br><br>
-                    
-                    <div style="background: #e8f5e9; padding: 10px; border-radius: 5px; margin: 10px 0;">
-                        <strong>Option 1: Publish to Web (Recommended)</strong><br>
-                        1. Open your <a href="https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit" target="_blank">Google Sheet</a><br>
-                        2. Click <strong>File → Share → Publish to web</strong><br>
-                        3. Choose <strong>Entire Document</strong><br>
-                        4. Select <strong>CSV</strong> format<br>
-                        5. Click <strong>Publish</strong> and confirm<br>
-                        6. Reload this page and try again
-                    </div>
-                    
-                    <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0;">
-                        <strong>Option 2: Check Sharing Settings</strong><br>
-                        Make sure your sheet is set to:<br>
-                        "Anyone with the link can view"
-                    </div>
-                    
-                    <strong>Your Sheet ID:</strong><br>
-                    <code style="background: #f5f5f5; padding: 2px 5px; border-radius: 3px; font-size: 11px;">
-                        ${appState.sheetId}
-                    </code><br><br>
-                    
-                    <strong>Currently using demo data.</strong><br>
-                    Once published, your real data will load automatically.
-                </div>
-            `;
-            
-            const alertDiv = document.getElementById('alertDiv');
-            alertDiv.innerHTML = message;
-            alertDiv.style.display = 'block';
-            alertDiv.className = 'alert warning';
-            
-            setTimeout(() => {
-                alertDiv.style.display = 'none';
-            }, 20000);
-        }
-
-        // Enhanced CSV parser
-        function parseCSV(csvText) {
-            const lines = csvText.split(/\r?\n/).filter(line => line.trim());
-            const rows = [];
-            
-            for (const line of lines) {
-                // Handle quoted fields that may contain commas
-                const row = [];
-                let current = '';
-                let inQuotes = false;
-                
-                for (let i = 0; i < line.length; i++) {
-                    const char = line[i];
-                    
-                    if (char === '"') {
-                        inQuotes = !inQuotes;
-                    } else if (char === ',' && !inQuotes) {
-                        row.push(current.trim());
-                        current = '';
-                    } else {
-                        current += char;
-                    }
-                }
-                
-                if (current) {
-                    row.push(current.trim());
-                }
-                
-                if (row.length >= 3) {
-                    rows.push(row);
-                }
-            }
-            
-            return rows;
-        }
-
-        // Show instructions for publishing sheet
-        function showPublishInstructions() {
-            const message = `
-                <div style="text-align: left; max-width: 500px;">
-                    <strong>📊 Quick Fix - Publish Your Sheet!</strong><br><br>
-                    
-                    <div style="background: #e8f5e9; padding: 10px; border-radius: 5px; margin: 10px 0;">
-                        <strong>Easy Setup (No API needed):</strong><br>
-                        1. Open your Google Sheet<br>
-                        2. Click <strong>File → Share → Publish to web</strong><br>
-                        3. Choose <strong>Entire Document</strong> and <strong>CSV</strong><br>
-                        4. Click <strong>Publish</strong> and confirm<br>
-                        5. Try loading again!
-                    </div>
-                    
-                    <strong>Currently using demo data.</strong><br>
-                    Once published, your real data will load automatically.<br><br>
-                    
-                    <small>Sheet ID detected: ${appState.sheetId.substring(0, 10)}...</small>
-                </div>
-            `;
-            
-            const alertDiv = document.getElementById('alertDiv');
-            alertDiv.innerHTML = message;
-            alertDiv.style.display = 'block';
-            alertDiv.className = 'alert warning';
-            
-            setTimeout(() => {
-                alertDiv.style.display = 'none';
-            }, 15000);
-        }
-
-        async function loadDemoData() {
-            const demoData = [
-                ['DW Hollywood', '6801 Hollywood Blvd, Hollywood, CA', '15'],
-                ['DW Downtown LA', '333 S Hope St, Los Angeles, CA', '8'],
-                ['DW Beverly Hills', '9570 Wilshire Blvd, Beverly Hills, CA', '0'],
-                ['DW Santa Monica', '1351 3rd Street Promenade, Santa Monica, CA', '12'],
-                ['DW Pasadena', '280 E Colorado Blvd, Pasadena, CA', '3'],
-                ['DW Burbank', '201 E Magnolia Blvd, Burbank, CA', '7'],
-                ['DW Long Beach', '300 E Ocean Blvd, Long Beach, CA', '0'],
-                ['DW Glendale', '101 N Brand Blvd, Glendale, CA', '5']
-            ];
-            
-            await processLocationsData(demoData);
-        }
-
-        async function processLocationsData(data) {
-            sheetsData = [];
-            clearMarkers();
-
-            if (!data || data.length === 0) {
-                updateStatus('No location data found');
-                return;
-            }
-
-            const geocoder = new google.maps.Geocoder();
-            let successCount = 0;
-
-            updateStatus(`Processing ${data.length} locations...`);
-
-            for (let i = 0; i < data.length; i++) {
-                const row = data[i];
-                
-                if (row && row.length >= 3) {
-                    const [name, address, count] = row;
-                    
-                    if (name && address) {
-                        try {
-                            const location = await geocodeAddress(geocoder, address);
-                            const distance = calculateDistance(userLocation, location);
-                            
-                            const locationData = {
-                                name: name.toString().trim(),
-                                address: address.toString().trim(),
-                                count: parseInt(count) || 0,
-                                position: location,
-                                distance: distance
-                            };
-
-                            sheetsData.push(locationData);
-                            createMarker(locationData);
-                            successCount++;
-                            
-                        } catch (error) {
-                            console.error(`Failed to geocode "${address}":`, error);
-                        }
-                    }
-                }
-                
-                updateStatus(`Processed ${i + 1}/${data.length} locations...`);
-            }
-
-            if (sheetsData.length > 0) {
-                updateLocationsList(sheetsData);
-                document.getElementById('infoPanel').style.display = 'block';
-                updateStatus(`Tracking ${sheetsData.length} locations`);
-                updateStats();
-            } else {
-                updateStatus('No valid locations found');
-            }
-        }
-
-        function calculateDistance(from, to) {
-            if (!window.google?.maps?.geometry?.spherical) {
-                return Math.random() * 10;
-            }
-            
-            const fromLatLng = new google.maps.LatLng(from.lat, from.lng);
-            const distance = google.maps.geometry.spherical.computeDistanceBetween(fromLatLng, to);
-            return distance / 1609.34; // Convert to miles
-        }
-
-        function geocodeAddress(geocoder, address) {
-            return new Promise((resolve, reject) => {
-                geocoder.geocode({ address }, (results, status) => {
-                    if (status === 'OK' && results[0]) {
-                        resolve(results[0].geometry.location);
-                    } else {
-                        reject(new Error(`Geocoding failed: ${status}`));
-                    }
-                });
-            });
-        }
-
-        async function createMarker(locationData) {
-            const isZero = locationData.count === 0;
-            const isLow = locationData.count > 0 && locationData.count <= 5;
-            
-            let marker;
-            
-            try {
-                if (advancedMarkersLoaded) {
-                    const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary("marker");
-                    
-                    // Create custom pin element
-                    const pinElement = new PinElement({
-                        background: isZero ? '#999999' : isLow ? '#FF9800' : '#4CAF50',
-                        borderColor: '#FFFFFF',
-                        glyphColor: '#FFFFFF',
-                        glyph: locationData.count.toString(),
-                        scale: 1.2
-                    });
-                    
-                    marker = new AdvancedMarkerElement({
-                        map: map,
-                        position: locationData.position,
-                        title: `${locationData.name} (${locationData.count} available)`,
-                        content: pinElement.element
-                    });
-                    
-                    // Store position for filtering
-                    marker.position = locationData.position;
-                }
-            } catch (error) {
-                console.log('Using fallback marker creation');
-                advancedMarkersLoaded = false;
-            }
-            
-            // If AdvancedMarkerElement failed or not available, don't create old markers
-            // to avoid deprecation warning
-            if (!marker && !advancedMarkersLoaded) {
-                // Create a simple div marker instead
-                const markerDiv = document.createElement('div');
-                markerDiv.style.cssText = `
-                    position: absolute;
-                    background: ${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'};
-                    color: white;
-                    padding: 8px 12px;
-                    border-radius: 20px;
-                    border: 2px solid white;
-                    font-weight: bold;
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                    cursor: pointer;
-                    z-index: 100;
-                `;
-                markerDiv.textContent = locationData.count.toString();
-                markerDiv.title = `${locationData.name} (${locationData.count} available)`;
-                
-                // Note: This is a simplified approach for demo mode
-                // In production, you'd want to properly position these divs
-                marker = {
-                    position: locationData.position,
-                    setMap: (mapRef) => {
-                        // Simple visibility toggle
-                        markerDiv.style.display = mapRef ? 'block' : 'none';
-                    },
-                    getPosition: () => locationData.position,
-                    element: markerDiv
-                };
-            }
-
-            if (marker) {
-                const infoWindow = new google.maps.InfoWindow({
-                    content: `
-                        <div style="padding: 15px; min-width: 250px;">
-                            <h3 style="margin: 0 0 10px 0; color: #333;">${locationData.name}</h3>
-                            <p style="margin: 5px 0;"><strong>📍 Address:</strong> ${locationData.address}</p>
-                            <p style="margin: 5px 0;"><strong>📦 Available:</strong> 
-                                <span style="color: ${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'}; font-weight: bold;">
-                                    ${locationData.count}
-                                </span>
-                            </p>
-                            <p style="margin: 5px 0;"><strong>📏 Distance:</strong> ${locationData.distance.toFixed(1)} miles</p>
-                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
-                                <button onclick="window.open('https://maps.google.com/?q=${encodeURIComponent(locationData.address)}', '_blank')" 
-                                        style="background: #4285F4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-                                    Get Directions
-                                </button>
-                            </div>
-                        </div>
-                    `
-                });
-
-                if (marker.addListener) {
-                    marker.addListener('click', () => {
-                        infoWindow.open({ map, anchor: marker });
-                    });
-                } else if (marker.element) {
-                    marker.element.addEventListener('click', () => {
-                        infoWindow.open(map);
-                    });
-                }
-
-                markers.push(marker);
-            }
-            
-            return marker;
-        }
-
-        function buildMarkerContent(locationData, isZero, isLow) {
-            const div = document.createElement('div');
-            const color = isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50';
-            div.className = 'custom-marker';
-            div.style.background = color;
-            div.style.color = 'white';
-            div.innerHTML = locationData.count.toString();
-            return div;
-        }
-
-        function clearMarkers() {
-            markers.forEach(marker => {
-                if (marker.setMap) {
-                    marker.setMap(null);
-                } else if (marker.map) {
-                    marker.map = null;
-                }
-            });
-            markers = [];
-        }
-
-        function updateLocationsList(data = sheetsData) {
-            const listContainer = document.getElementById('locationsList');
-            listContainer.innerHTML = '';
-
-            data
-                .sort((a, b) => a.distance - b.distance)
-                .forEach(location => {
-                    const item = document.createElement('div');
-                    item.className = 'location-item';
-                    item.onclick = () => {
-                        const marker = markers.find(m => {
-                            const pos = m.position || m.getPosition();
-                            const lat = typeof pos.lat === 'function' ? pos.lat() : pos.lat;
-                            const lng = typeof pos.lng === 'function' ? pos.lng() : pos.lng;
-                            return location.position.lat() === lat && location.position.lng() === lng;
-                        });
-                        if (marker) {
-                            map.setCenter(location.position);
-                            map.setZoom(15);
-                            google.maps.event.trigger(marker, 'click');
-                        }
-                    };
-                    
-                    const countClass = location.count === 0 ? 'zero' : location.count <= 5 ? 'low' : '';
-                    
-                    item.innerHTML = `
-                        <div>
-                            <div class="location-name">${location.name}</div>
-                            <div style="font-size: 0.85rem; color: #666;">
-                                📍 ${location.distance.toFixed(1)} mi • ${location.address}
-                            </div>
-                        </div>
-                        <div class="location-count ${countClass}">${location.count}</div>
-                    `;
-                    listContainer.appendChild(item);
-                });
-        }
-
-        // Test Google Sheets connection
-        async function testSheetsConnection() {
-            const sheetId = document.getElementById('sheetId').value.trim();
-            const range = document.getElementById('range').value.trim() || 'Sheet1!A:C';
-            const apiKey = document.getElementById('sheetsApiKey').value.trim() || 
-                           document.getElementById('apiKey').value.trim();
-            
-            if (!sheetId || !apiKey) {
-                showAlert('Please enter Sheet ID and API Key to test', 'error');
-                return;
-            }
-            
-            showLoadingOverlay(true);
-            
-            try {
-                const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?key=${apiKey}`;
-                const response = await fetch(url);
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    const rowCount = data.values ? data.values.length : 0;
-                    showAlert(`✅ Connection successful! Found ${rowCount} rows in your sheet.`, 'success');
-                } else {
-                    const errorData = await response.json().catch(() => null);
-                    let errorMessage = 'Connection failed. ';
-                    
-                    if (response.status === 400) {
-                        errorMessage += 'Please enable Sheets API in Google Cloud Console.';
-                    } else if (response.status === 403) {
-                        errorMessage += 'Sheet is private or API key lacks permission.';
-                    } else if (response.status === 404) {
-                        errorMessage += 'Sheet not found. Check the Sheet ID.';
-                    } else {
-                        errorMessage += `Error: ${response.status}`;
-                    }
-                    
-                    showAlert(errorMessage, 'error');
-                }
-            } catch (error) {
-                showAlert('Connection test failed: ' + error.message, 'error');
-            } finally {
-                showLoadingOverlay(false);
-            }
-        }
-
-        // Event listeners setup
-        function setupEventListeners() {
-            // Main controls
-            document.getElementById('initBtn').addEventListener('click', initializeApp);
-            
-            // QR Button - Generate Google Maps QR directly
-            document.getElementById('qrBtn').addEventListener('click', () => {
-                console.log('QR button clicked - generating Google Maps QR');
-                generateGoogleMapsQR();
-            });
-            
-            document.getElementById('refreshBtn').addEventListener('click', refreshData);
-            document.getElementById('exportBtn').addEventListener('click', exportData);
-            document.getElementById('setupBtn').addEventListener('click', showSetupForm);
-            
-            // Setup form
-            document.getElementById('saveBtn').addEventListener('click', saveConfiguration);
-            document.getElementById('testBtn').addEventListener('click', testSheetsConnection);
-            document.getElementById('cancelBtn').addEventListener('click', hideSetupForm);
-            document.getElementById('demoBtn').addEventListener('click', loadDemoConfig);
-            document.getElementById('clearBtn').addEventListener('click', clearAllData);
-            
-            // Theme toggle
-            document.getElementById('themeToggle').addEventListener('click', toggleTheme);
-            
-            // Auto-refresh
-            document.getElementById('autoRefresh').addEventListener('change', setupAutoRefresh);
-            
-            // Map controls
-            document.getElementById('centerBtn').addEventListener('click', centerOnUser);
-            document.getElementById('fitBtn').addEventListener('click', fitAllMarkers);
-            document.getElementById('satelliteBtn').addEventListener('click', toggleSatellite);
-            
-            // Filter controls
-            document.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
-            });
-        }
-        
-        // Generate Google Maps QR Code with all locations
-        function generateGoogleMapsQR() {
-            console.log('generateGoogleMapsQR called');
-            
-            // Check if we have location data
-            if (!sheetsData || sheetsData.length === 0) {
-                showAlert('Please load locations first before generating QR code', 'error');
-                return;
-            }
-            
-            console.log(`Generating QR for ${sheetsData.length} locations`);
-            
-            // Display QR code container with options
-            const qrContainer = document.getElementById('qrContainer');
-            qrContainer.style.display = 'block';
-            
-            // Create different QR code options for different use cases
-            qrContainer.innerHTML = `
-                <h3>📱 Google Maps QR Code Generator</h3>
-                <p style="color: #666; margin: 10px 0;">
-                    Found <strong>${sheetsData.length} locations</strong> in your sheet
-                </p>
-                
-                <div style="display: grid; gap: 10px; margin: 20px 0;">
-                    <button class="btn" onclick="generateSingleMapQR()">
-                        📍 Generate QR for Nearest Location
-                    </button>
-                    <button class="btn btn-secondary" onclick="generateMultipleQRCodes()">
-                        📋 Generate Individual QR Codes (All ${sheetsData.length} Locations)
-                    </button>
-                    <button class="btn btn-secondary" onclick="generateGoogleMyMapsInstructions()">
-                        🗺️ Create Google My Maps (Shows All Locations)
-                    </button>
-                </div>
-                
-                <div id="qrOutput" style="margin-top: 20px;"></div>
-                
-                <button class="btn btn-secondary" onclick="document.getElementById('qrContainer').style.display='none'" style="margin-top: 10px;">
-                    Close
-                </button>
-            `;
-            
-            // Auto-generate nearest location QR
-            generateSingleMapQR();
-        }
-        
-        // Generate QR for single/nearest location
-        window.generateSingleMapQR = function() {
-            if (!sheetsData || sheetsData.length === 0) return;
-            
-            // Sort by distance and get nearest
-            const nearest = sheetsData.sort((a, b) => a.distance - b.distance)[0];
-            
-            // Create a more specific Google Maps URL
-            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(nearest.name + ' ' + nearest.address)}`;
-            
-            const output = document.getElementById('qrOutput');
-            output.innerHTML = `
-                <h4>Nearest Location QR Code</h4>
-                <div id="singleQR" style="margin: 20px auto; width: 256px; height: 256px;"></div>
-                <p style="color: #666;">
-                    <strong>${nearest.name}</strong><br>
-                    ${nearest.address}<br>
-                    Available: ${nearest.count} | Distance: ${nearest.distance.toFixed(1)} miles
-                </p>
-                <a href="${mapsUrl}" target="_blank" class="btn btn-secondary">
-                    Test in Google Maps
-                </a>
-            `;
-            
-            new QRCode(document.getElementById('singleQR'), {
-                text: mapsUrl,
-                width: 256,
-                height: 256,
-                colorDark: '#000000',
-                colorLight: '#ffffff'
-            });
-        }
-        
-        // Generate multiple QR codes for all locations
-        window.generateMultipleQRCodes = function() {
-            if (!sheetsData || sheetsData.length === 0) return;
-            
-            const output = document.getElementById('qrOutput');
-            output.innerHTML = `
-                <h4>Individual QR Codes for All ${sheetsData.length} Locations</h4>
-                <p style="color: #666; margin: 10px 0;">
-                    Each QR code opens Google Maps for that specific location
-                </p>
-                <div style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
-            `;
-            
-            sheetsData.forEach((location, index) => {
-                const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.name + ' ' + location.address)}`;
-                
-                const qrDiv = document.createElement('div');
-                qrDiv.style.cssText = 'margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 5px;';
-                qrDiv.innerHTML = `
-                    <h5 style="margin: 0 0 10px 0;">${index + 1}. ${location.name}</h5>
-                    <div id="qr-${index}" style="width: 150px; height: 150px; margin: 10px 0;"></div>
-                    <p style="font-size: 12px; margin: 5px 0;">
-                        ${location.address}<br>
-                        Available: ${location.count} | Distance: ${location.distance.toFixed(1)} mi
-                    </p>
-                    <a href="${mapsUrl}" target="_blank" style="font-size: 12px;">Open in Maps</a>
-                `;
-                output.querySelector('div').appendChild(qrDiv);
-                
-                // Generate QR code for this location
-                new QRCode(document.getElementById(`qr-${index}`), {
-                    text: mapsUrl,
-                    width: 150,
-                    height: 150,
-                    colorDark: '#000000',
-                    colorLight: '#ffffff'
-                });
-            });
-            
-            output.querySelector('div').innerHTML += '</div>';
-            
-            // Add print button
-            output.innerHTML += `
-                <button class="btn btn-secondary" onclick="window.print()" style="margin-top: 10px;">
-                    🖨️ Print All QR Codes
-                </button>
-            `;
-        }
-        
-        // Generate Google My Maps instructions
-        window.generateGoogleMyMapsInstructions = function() {
-            const output = document.getElementById('qrOutput');
-            
-            // Create CSV content for Google My Maps
-            const csvContent = 'Name,Address,Description,Available,Distance\n' + 
-                sheetsData.map(loc => 
-                    `"${loc.name}","${loc.address}","DW Location","${loc.count}","${loc.distance.toFixed(1)} miles"`
-                ).join('\n');
-            
-            const blob = new Blob([csvContent], { type: 'text/csv' });
-            const csvUrl = window.URL.createObjectURL(blob);
-            
-            output.innerHTML = `
-                <h4>🗺️ Create a Google My Maps (Best for All Locations)</h4>
-                <div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;">
-                    <p><strong>This is the best way to share all ${sheetsData.length} locations!</strong></p>
-                    <ol style="margin: 10px 0; padding-left: 20px;">
-                        <li>Download the CSV file below</li>
-                        <li>Go to <a href="https://mymaps.google.com" target="_blank">Google My Maps</a></li>
-                        <li>Click "Create a New Map"</li>
-                        <li>Click "Import" and upload the CSV</li>
-                        <li>Choose "Address" for location column</li>
-                        <li>Choose "Name" for title column</li>
-                        <li>Style your markers (use yellow with white border!)</li>
-                        <li>Click "Share" and make it public</li>
-                        <li>Copy the share link and create a QR code for it</li>
-                    </ol>
-                    <a href="${csvUrl}" download="dw_locations.csv" class="btn">
-                        📥 Download CSV for Google My Maps
-                    </a>
-                </div>
-                
-                <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0;">
-                    <p><strong>Why use Google My Maps?</strong></p>
-                    <ul style="margin: 10px 0; padding-left: 20px;">
-                        <li>Shows ALL locations with custom markers</li>
-                        <li>Users can see all locations at once</li>
-                        <li>Can filter by availability</li>
-                        <li>Works perfectly on mobile</li>
-                        <li>Integrates with navigation</li>
-                        <li>Updates when you edit the map</li>
-                    </ul>
-                </div>
-                
-                <div style="margin-top: 15px;">
-                    <p><strong>After creating your Google My Map:</strong></p>
-                    <input type="text" id="myMapsUrl" placeholder="Paste your Google My Maps share URL here" style="width: 100%; padding: 8px; margin: 10px 0;">
-                    <button class="btn" onclick="generateMyMapsQR()">
-                        Generate QR for My Maps URL
-                    </button>
-                </div>
-                
-                <div id="myMapsQR"></div>
-            `;
-        }
-        
-        // Generate QR for Google My Maps URL
-        window.generateMyMapsQR = function() {
-            const url = document.getElementById('myMapsUrl').value.trim();
-            if (!url) {
-                showAlert('Please enter your Google My Maps URL', 'error');
-                return;
-            }
-            
-            const qrDiv = document.getElementById('myMapsQR');
-            qrDiv.innerHTML = `
-                <h5 style="margin-top: 20px;">Your Google My Maps QR Code</h5>
-                <div id="finalQR" style="margin: 20px auto; width: 256px; height: 256px;"></div>
-                <p style="color: #666;">
-                    This QR code will open your custom map with all ${sheetsData.length} locations!
-                </p>
-            `;
-            
-            new QRCode(document.getElementById('finalQR'), {
-                text: url,
-                width: 256,
-                height: 256,
-                colorDark: '#000000',
-                colorLight: '#ffffff'
-            });
-            
-            showAlert('QR code generated for your Google My Maps!', 'success');
-        }
-
-        // Initialize app on load
-        window.addEventListener('load', async () => {
-            console.log('🚀 DW Location Tracker v2.1 starting...');
-            updateStatus('Loading application...');
-            
-            setupEventListeners();
-            
-            try {
-                const configLoaded = await loadConfiguration();
-                if (configLoaded) {
-                    updateStatus('Ready! Click "Initialize App" to start tracking.');
-                } else {
-                    updateStatus('Welcome! Please configure settings to begin.');
-                }
-            } catch (error) {
-                console.error('Startup error:', error);
-                updateStatus('Ready for configuration.');
-            }
-        });
-    </script>
-</body>
-</html>
