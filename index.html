@@ -1026,176 +1026,66 @@
         }
 
         async function generateQR() {
-            if (sheetsData.length === 0) {
-                showAlert('No locations loaded. Please initialize the app first.', 'error');
+            // Check if we have location data
+            if (!sheetsData || sheetsData.length === 0) {
+                showAlert('Please load locations first before generating QR code', 'error');
                 return;
             }
             
-            // Generate Google Maps URL with multiple locations
+            // Generate Google Maps URL directly - no dialog, just create the QR
             let mapsUrl = '';
             
-            // Option 1: Create a Google My Maps URL (if you have a saved map)
-            // const myMapsId = 'YOUR_GOOGLE_MY_MAPS_ID'; // Replace with your My Maps ID if you have one
-            // mapsUrl = `https://www.google.com/maps/d/viewer?mid=${myMapsId}`;
-            
-            // Option 2: Create a directions URL with multiple waypoints (best for navigation)
             if (sheetsData.length === 1) {
                 // Single location - direct navigation
                 const location = sheetsData[0];
                 mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(location.address)}&travelmode=driving`;
-            } else if (sheetsData.length <= 10) {
-                // Multiple locations (up to 10) - create route with waypoints
-                const origin = 'Current+Location'; // Will use user's current location
-                const destination = encodeURIComponent(sheetsData[sheetsData.length - 1].address);
-                const waypoints = sheetsData.slice(0, -1).map(loc => 
-                    encodeURIComponent(loc.address)
-                ).join('|');
-                
-                mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
             } else {
-                // Too many locations for waypoints - create a search query showing all
-                // This will search and show all locations on the map
-                const allAddresses = sheetsData.map(loc => loc.address).join(' / ');
-                mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(allAddresses)}`;
+                // Multiple locations - show all on map for selection
+                // Using search query to show multiple pins
+                const locations = sheetsData.slice(0, 10); // Limit to 10 for URL length
+                const query = locations.map(loc => `${loc.name} ${loc.address}`).join(' / ');
+                mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
             }
             
-            // Alternative Option 3: Create a custom Google Maps list URL
-            // This requires creating a list in Google Maps first
+            console.log('Generating QR for Google Maps URL:', mapsUrl);
             
-            console.log('Generated Maps URL:', mapsUrl);
-            
-            // Show QR code options dialog
+            // Display QR code
             const qrContainer = document.getElementById('qrContainer');
             qrContainer.innerHTML = `
-                <h3>📱 Generate QR Code for Mobile Navigation</h3>
-                
-                <div style="margin: 20px 0;">
-                    <h4>Choose QR Code Type:</h4>
-                    
-                    <div style="margin: 15px 0; padding: 15px; background: #f0f0f0; border-radius: 8px;">
-                        <label style="display: flex; align-items: center; cursor: pointer;">
-                            <input type="radio" name="qrType" value="route" checked style="margin-right: 10px;">
-                            <div>
-                                <strong>Navigation Route</strong><br>
-                                <small>Opens Google Maps with turn-by-turn directions to all locations (max 10)</small>
-                            </div>
-                        </label>
-                    </div>
-                    
-                    <div style="margin: 15px 0; padding: 15px; background: #f0f0f0; border-radius: 8px;">
-                        <label style="display: flex; align-items: center; cursor: pointer;">
-                            <input type="radio" name="qrType" value="nearest" style="margin-right: 10px;">
-                            <div>
-                                <strong>Nearest Location</strong><br>
-                                <small>Navigate to the closest location from current position</small>
-                            </div>
-                        </label>
-                    </div>
-                    
-                    <div style="margin: 15px 0; padding: 15px; background: #f0f0f0; border-radius: 8px;">
-                        <label style="display: flex; align-items: center; cursor: pointer;">
-                            <input type="radio" name="qrType" value="all" style="margin-right: 10px;">
-                            <div>
-                                <strong>All Locations on Map</strong><br>
-                                <small>Shows all ${sheetsData.length} locations as pins on Google Maps</small>
-                            </div>
-                        </label>
-                    </div>
-                    
-                    <div style="margin: 15px 0; padding: 15px; background: #f0f0f0; border-radius: 8px;">
-                        <label style="display: flex; align-items: center; cursor: pointer;">
-                            <input type="radio" name="qrType" value="list" style="margin-right: 10px;">
-                            <div>
-                                <strong>Location List</strong><br>
-                                <small>Creates a list of all addresses for manual selection</small>
-                            </div>
-                        </label>
-                    </div>
+                <h3>📱 QR Code for Google Maps Navigation</h3>
+                <div id="qrCodeDisplay" style="margin: 20px auto; width: 256px;"></div>
+                <p style="color: #666;">
+                    <strong>Scan this code to open locations in Google Maps</strong><br>
+                    Users can select any location and navigate there
+                </p>
+                <div style="margin-top: 20px;">
+                    <a href="${mapsUrl}" target="_blank" class="btn btn-secondary">
+                        📍 Test in Google Maps
+                    </a>
+                    <button class="btn btn-secondary" onclick="document.getElementById('qrContainer').style.display='none'">
+                        Close
+                    </button>
                 </div>
-                
-                <button class="btn" onclick="generateSelectedQR()">Generate QR Code</button>
-                <button class="btn btn-secondary" onclick="document.getElementById('qrContainer').style.display='none'">Cancel</button>
-                
-                <div id="qrCode" style="margin-top: 20px; display: none;"></div>
-                <div id="qrInstructions" style="margin-top: 10px; display: none;"></div>
+                <details style="margin-top: 15px;">
+                    <summary style="cursor: pointer; color: #666;">Advanced Options</summary>
+                    <div style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px;">
+                        <button onclick="generateNavigationQR()" class="btn btn-secondary" style="margin: 5px;">
+                            🚗 Route with Waypoints
+                        </button>
+                        <button onclick="generateNearestQR()" class="btn btn-secondary" style="margin: 5px;">
+                            📍 Nearest Location Only
+                        </button>
+                        <button onclick="generateAllLocationsQR()" class="btn btn-secondary" style="margin: 5px;">
+                            🗺️ All Locations View
+                        </button>
+                    </div>
+                </details>
             `;
             
             qrContainer.style.display = 'block';
-        }
-        
-        // Generate the selected type of QR code
-        window.generateSelectedQR = function() {
-            const selectedType = document.querySelector('input[name="qrType"]:checked').value;
-            let mapsUrl = '';
-            let instructions = '';
             
-            switch(selectedType) {
-                case 'route':
-                    // Create route with waypoints
-                    if (sheetsData.length === 1) {
-                        mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(sheetsData[0].address)}&travelmode=driving`;
-                        instructions = 'Scan to navigate directly to this location';
-                    } else {
-                        // Take first 9 locations as waypoints, 10th as destination
-                        const routeLocations = sheetsData.slice(0, 10);
-                        const destination = encodeURIComponent(routeLocations[routeLocations.length - 1].address);
-                        const waypoints = routeLocations.slice(0, -1).map(loc => 
-                            encodeURIComponent(loc.address)
-                        ).join('|');
-                        
-                        mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
-                        instructions = `Scan to navigate through ${Math.min(10, sheetsData.length)} locations`;
-                    }
-                    break;
-                    
-                case 'nearest':
-                    // Navigate to nearest location (first in sorted list)
-                    const nearest = sheetsData.sort((a, b) => a.distance - b.distance)[0];
-                    mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(nearest.address)}&travelmode=driving`;
-                    instructions = `Scan to navigate to nearest location: ${nearest.name}`;
-                    break;
-                    
-                case 'all':
-                    // Show all locations on map (search query)
-                    if (sheetsData.length <= 5) {
-                        // For few locations, show them all in search
-                        const query = sheetsData.map(loc => loc.address).join(' / ');
-                        mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
-                    } else {
-                        // For many locations, create a near query for the area
-                        const centerLat = sheetsData.reduce((sum, loc) => sum + loc.position.lat(), 0) / sheetsData.length;
-                        const centerLng = sheetsData.reduce((sum, loc) => sum + loc.position.lng(), 0) / sheetsData.length;
-                        mapsUrl = `https://www.google.com/maps/@${centerLat},${centerLng},12z/data=!3m1!4b1`;
-                        
-                        // Add locations as search query
-                        const query = sheetsData.map(loc => `"${loc.name}" ${loc.address}`).join(' OR ');
-                        mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
-                    }
-                    instructions = `Scan to see all ${sheetsData.length} locations on Google Maps`;
-                    break;
-                    
-                case 'list':
-                    // Create a text list of all locations with Google Maps links
-                    const listHtml = sheetsData.map((loc, index) => {
-                        const mapLink = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(loc.address)}`;
-                        return `${index + 1}. ${loc.name} - ${loc.address} (${loc.count} available)\n${mapLink}\n`;
-                    }).join('\n');
-                    
-                    // For list, we'll create a Google Doc or use a URL shortener
-                    // For now, let's use the first location as primary and list others
-                    mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(sheetsData[0].address)}&travelmode=driving`;
-                    instructions = `Scan to navigate to first location. ${sheetsData.length} total locations available.`;
-                    break;
-            }
-            
-            // Generate QR code
-            const qrCodeDiv = document.getElementById('qrCode');
-            const qrInstructions = document.getElementById('qrInstructions');
-            
-            qrCodeDiv.innerHTML = '';
-            qrCodeDiv.style.display = 'block';
-            
-            new QRCode(qrCodeDiv, {
+            // Generate the actual QR code
+            new QRCode(document.getElementById('qrCodeDisplay'), {
                 text: mapsUrl,
                 width: 256,
                 height: 256,
@@ -1204,39 +1094,77 @@
                 correctLevel: QRCode.CorrectLevel.H
             });
             
-            qrInstructions.innerHTML = `
-                <p><strong>${instructions}</strong></p>
-                <p style="margin-top: 10px;">
-                    <a href="${mapsUrl}" target="_blank" class="btn btn-secondary">
-                        Test in Browser
-                    </a>
-                </p>
-                <details style="margin-top: 15px;">
-                    <summary style="cursor: pointer; color: #666;">Show URL</summary>
-                    <div style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px; word-break: break-all; font-size: 11px;">
-                        ${mapsUrl}
-                    </div>
-                </details>
-            `;
-            qrInstructions.style.display = 'block';
+            showAlert('QR code generated! This will open Google Maps directly.', 'success');
         }
         
-        // Create Google My Maps CSV export
-        window.exportForGoogleMyMaps = function() {
-            // Generate CSV in Google My Maps format
-            const csvContent = "Name,Address,Description\n" + 
-                sheetsData.map(loc => 
-                    `"${loc.name}","${loc.address}","Available: ${loc.count}"`
-                ).join("\n");
+        // Generate navigation route QR
+        window.generateNavigationQR = function() {
+            if (!sheetsData || sheetsData.length === 0) return;
             
-            const blob = new Blob([csvContent], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'locations_for_google_my_maps.csv';
-            a.click();
+            let mapsUrl = '';
+            if (sheetsData.length === 1) {
+                mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(sheetsData[0].address)}&travelmode=driving`;
+            } else {
+                // Create route with waypoints (max 9 waypoints + 1 destination = 10 total)
+                const routeLocations = sheetsData.slice(0, 10);
+                const destination = encodeURIComponent(routeLocations[routeLocations.length - 1].address);
+                const waypoints = routeLocations.slice(0, -1).map(loc => 
+                    encodeURIComponent(loc.address)
+                ).join('|');
+                
+                mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=Current+Location&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
+            }
             
-            showAlert('CSV exported! Import this into Google My Maps to create a shareable map.', 'info');
+            updateQRCode(mapsUrl, 'Navigation Route - Opens driving directions');
+        }
+        
+        // Generate nearest location QR
+        window.generateNearestQR = function() {
+            if (!sheetsData || sheetsData.length === 0) return;
+            
+            const nearest = sheetsData.sort((a, b) => a.distance - b.distance)[0];
+            const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(nearest.address)}&travelmode=driving`;
+            
+            updateQRCode(mapsUrl, `Navigate to nearest: ${nearest.name}`);
+        }
+        
+        // Generate all locations QR
+        window.generateAllLocationsQR = function() {
+            if (!sheetsData || sheetsData.length === 0) return;
+            
+            // Create a search query showing all locations
+            const query = sheetsData.map(loc => `${loc.name} ${loc.address}`).join(' / ');
+            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+            
+            updateQRCode(mapsUrl, `View all ${sheetsData.length} locations on map`);
+        }
+        
+        // Helper function to update QR code
+        window.updateQRCode = function(url, description) {
+            const qrDisplay = document.getElementById('qrCodeDisplay');
+            if (qrDisplay) {
+                qrDisplay.innerHTML = '';
+                new QRCode(qrDisplay, {
+                    text: url,
+                    width: 256,
+                    height: 256,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+                
+                // Update description
+                const descElement = document.querySelector('#qrContainer p');
+                if (descElement) {
+                    descElement.innerHTML = `<strong>${description}</strong><br>Scan to open in Google Maps`;
+                }
+                
+                // Update test link
+                const testLink = document.querySelector('#qrContainer a[target="_blank"]');
+                if (testLink) {
+                    testLink.href = url;
+                }
+            }
         }
 
         async function refreshData() {
