@@ -1308,6 +1308,7 @@
             }
 
             console.log('Loading sheet data via published CSV...');
+            console.log('Sheet ID:', appState.sheetId);
             
             // ONLY use published CSV method - no API calls!
             const dataLoaded = await loadSheetsViaPublishedCSV();
@@ -1322,74 +1323,175 @@
         // Load via published CSV (NO API KEY NEEDED!)
         async function loadSheetsViaPublishedCSV() {
             try {
-                // First, check if it's the problematic sheet and use direct URL
-                let publishedUrl;
-                
-                // Special handling for your specific sheet
-                if (appState.sheetId.includes('1d4duoH6hPzHoiDrgr5MsJD_vMzpK')) {
-                    // Use the standard published format for your sheet
-                    publishedUrl = `https://docs.google.com/spreadsheets/d/${appState.sheetId}/gviz/tq?tqx=out:csv&sheet=Sheet1`;
-                } else {
-                    // Standard published URL format
-                    publishedUrl = `https://docs.google.com/spreadsheets/d/e/${appState.sheetId}/pub?output=csv`;
-                }
-                
-                console.log('Loading from:', publishedUrl.substring(0, 60) + '...');
-                
-                // Try multiple CORS proxies
-                const corsProxies = [
-                    `https://corsproxy.io/?${encodeURIComponent(publishedUrl)}`,
-                    `https://api.allorigins.win/raw?url=${encodeURIComponent(publishedUrl)}`,
-                    `https://cors.eu.org/${publishedUrl}`
+                // Multiple URL formats to try
+                const urlFormats = [
+                    // Format 1: Direct CSV export (works if sheet is viewable by anyone with link)
+                    `https://docs.google.com/spreadsheets/d/${appState.sheetId}/export?format=csv`,
+                    // Format 2: Published web format
+                    `https://docs.google.com/spreadsheets/d/e/${appState.sheetId}/pub?output=csv`,
+                    // Format 3: Visualization API format
+                    `https://docs.google.com/spreadsheets/d/${appState.sheetId}/gviz/tq?tqx=out:csv`
                 ];
                 
-                for (const proxyUrl of corsProxies) {
-                    try {
-                        console.log('Trying proxy...');
-                        const response = await fetch(proxyUrl, {
-                            method: 'GET',
-                            headers: {
-                                'Accept': 'text/csv,text/plain,*/*'
-                            }
-                        });
+                // CORS proxies to try
+                const corsProxies = [
+                    (url) => `https://corsproxy.io/?${encodeURIComponent(url)}`,
+                    (url) => `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+                    (url) => `https://cors.eu.org/${url}`,
+                    (url) => `https://cors-anywhere.herokuapp.com/${url}`
+                ];
+                
+                // Try each URL format with each proxy
+                for (const urlFormat of urlFormats) {
+                    console.log('Trying URL format:', urlFormat.substring(0, 60) + '...');
+                    
+                    for (const proxyFn of corsProxies) {
+                        const proxyUrl = proxyFn(urlFormat);
                         
-                        if (response && response.ok) {
-                            const csvText = await response.text();
+                        try {
+                            console.log('Attempting proxy fetch...');
+                            const response = await fetch(proxyUrl, {
+                                method: 'GET',
+                                headers: {
+                                    'Accept': 'text/csv,text/plain,*/*'
+                                },
+                                // Add timeout
+                                signal: AbortSignal.timeout(5000)
+                            }).catch(err => {
+                                console.log('Fetch failed:', err.message);
+                                return null;
+                            });
                             
-                            // Validate we got CSV data
-                            if (csvText && !csvText.includes('<!DOCTYPE') && 
-                                (csvText.includes(',') || csvText.includes('\t'))) {
+                            if (response && response.ok) {
+                                const text = await response.text();
                                 
-                                console.log('CSV data received, parsing...');
-                                const rows = parseCSV(csvText);
-                                
-                                if (rows.length > 0) {
-                                    // Skip header if present
-                                    const hasHeader = isNaN(parseInt(rows[0][2]));
-                                    const dataRows = hasHeader ? rows.slice(1) : rows;
+                                // Check if we got valid CSV/data
+                                if (text && !text.includes('<!DOCTYPE') && !text.includes('<html')) {
+                                    console.log('Got response, checking for CSV data...');
                                     
-                                    if (dataRows.length > 0) {
-                                        console.log(`Successfully loaded ${dataRows.length} locations`);
-                                        await processLocationsData(dataRows);
-                                        showAlert(`✅ Loaded ${dataRows.length} locations from your sheet!`, 'success');
-                                        return true;
+                                    // Try to parse as CSV
+                                    const rows = parseCSV(text);
+                                    
+                                    if (rows.length > 0) {
+                                        console.log(`Parsed ${rows.length} rows from CSV`);
+                                        
+                                        // Check if first row is header
+                                        const hasHeader = isNaN(parseInt(rows[0][2])) || 
+                                                         rows[0][0].toLowerCase().includes('name') ||
+                                                         rows[0][0].toLowerCase().includes('location');
+                                        
+                                        const dataRows = hasHeader ? rows.slice(1) : rows;
+                                        
+                                        if (dataRows.length > 0) {
+                                            console.log(`Processing ${dataRows.length} data rows`);
+                                            await processLocationsData(dataRows);
+                                            showAlert(`✅ Successfully loaded ${dataRows.length} locations from your Google Sheet!`, 'success');
+                                            return true;
+                                        }
                                     }
                                 }
                             }
+                        } catch (error) {
+                            console.log('Proxy attempt failed:', error.message);
+                            continue;
                         }
-                    } catch (error) {
-                        console.log('Proxy failed, trying next...');
-                        continue;
                     }
                 }
                 
-                console.log('All proxy attempts failed');
+                console.log('All attempts to load sheet failed');
                 return false;
                 
             } catch (error) {
-                console.error('Error loading CSV:', error);
+                console.error('Error in loadSheetsViaPublishedCSV:', error);
                 return false;
             }
+        }
+
+        // Enhanced CSV parser
+        function parseCSV(csvText) {
+            // Handle different line endings
+            const lines = csvText.split(/\r?\n/).filter(line => line.trim());
+            const rows = [];
+            
+            for (const line of lines) {
+                const row = [];
+                let current = '';
+                let inQuotes = false;
+                
+                for (let i = 0; i < line.length; i++) {
+                    const char = line[i];
+                    
+                    if (char === '"') {
+                        if (inQuotes && line[i + 1] === '"') {
+                            // Escaped quote
+                            current += '"';
+                            i++;
+                        } else {
+                            inQuotes = !inQuotes;
+                        }
+                    } else if ((char === ',' || char === '\t') && !inQuotes) {
+                        row.push(current.trim());
+                        current = '';
+                    } else {
+                        current += char;
+                    }
+                }
+                
+                // Add the last field
+                if (current || row.length > 0) {
+                    row.push(current.trim());
+                }
+                
+                // Only add rows with at least 3 columns
+                if (row.length >= 3 && row.some(cell => cell)) {
+                    rows.push(row);
+                }
+            }
+            
+            console.log(`Parsed ${rows.length} valid rows from CSV`);
+            return rows;
+        }
+
+        // Show instructions for publishing sheet
+        function showPublishInstructions() {
+            const message = `
+                <div style="text-align: left; max-width: 500px;">
+                    <strong>📊 Setup Required - Publish Your Sheet</strong><br><br>
+                    
+                    <div style="background: #e8f5e9; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>Option 1: Publish to Web (Recommended)</strong><br>
+                        1. Open your <a href="https://docs.google.com/spreadsheets/d/${appState.sheetId}/edit" target="_blank">Google Sheet</a><br>
+                        2. Click <strong>File → Share → Publish to web</strong><br>
+                        3. Choose <strong>Entire Document</strong><br>
+                        4. Select <strong>CSV</strong> format<br>
+                        5. Click <strong>Publish</strong> and confirm<br>
+                        6. Reload this page and try again
+                    </div>
+                    
+                    <div style="background: #fff3cd; padding: 10px; border-radius: 5px; margin: 10px 0;">
+                        <strong>Option 2: Check Sharing Settings</strong><br>
+                        Make sure your sheet is set to:<br>
+                        "Anyone with the link can view"
+                    </div>
+                    
+                    <strong>Your Sheet ID:</strong><br>
+                    <code style="background: #f5f5f5; padding: 2px 5px; border-radius: 3px; font-size: 11px;">
+                        ${appState.sheetId}
+                    </code><br><br>
+                    
+                    <strong>Currently using demo data.</strong><br>
+                    Once published, your real data will load automatically.
+                </div>
+            `;
+            
+            const alertDiv = document.getElementById('alertDiv');
+            alertDiv.innerHTML = message;
+            alertDiv.style.display = 'block';
+            alertDiv.className = 'alert warning';
+            
+            setTimeout(() => {
+                alertDiv.style.display = 'none';
+            }, 20000);
         }
 
         // Enhanced CSV parser
