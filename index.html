@@ -1,352 +1,1146 @@
-// Google Apps Script - Auto-sync Google Sheets to Google My Maps
-// Add this script to your Google Sheet via Extensions > Apps Script
-
-// ============= CONFIGURATION =============
-const CONFIG = {
-  // Your Google My Maps ID (get from the map URL)
-  MAP_ID: 'YOUR_MAP_ID_HERE', // Found in URL: mymaps.google.com/maps/d/edit?mid=MAP_ID
-  
-  // Your Sheet configuration
-  SHEET_NAME: 'Sheet1',
-  NAME_COLUMN: 1,      // Column A
-  ADDRESS_COLUMN: 2,   // Column B  
-  COUNT_COLUMN: 3,     // Column C
-  
-  // Optional: Additional columns
-  PHONE_COLUMN: 4,     // Column D (if exists)
-  HOURS_COLUMN: 5,     // Column E (if exists)
-  
-  // Auto-refresh interval (in minutes)
-  REFRESH_INTERVAL: 30
-};
-
-// ============= MAIN FUNCTIONS =============
-
-/**
- * Initial setup - Run this once to set up triggers
- */
-function setupAutoSync() {
-  // Delete existing triggers
-  const triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  
-  // Create new time-based trigger
-  ScriptApp.newTrigger('syncSheetToMap')
-    .timeBased()
-    .everyMinutes(CONFIG.REFRESH_INTERVAL)
-    .create();
-  
-  // Also create an on-edit trigger for immediate updates
-  ScriptApp.newTrigger('onSheetEdit')
-    .forSpreadsheet(SpreadsheetApp.getActiveSpreadsheet())
-    .onEdit()
-    .create();
-  
-  // Run initial sync
-  syncSheetToMap();
-  
-  SpreadsheetApp.getUi().alert('✅ Auto-sync setup complete! Your map will update every ' + CONFIG.REFRESH_INTERVAL + ' minutes.');
-}
-
-/**
- * Manual sync function - Run this to sync immediately
- */
-function syncSheetToMap() {
-  try {
-    const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEET_NAME);
-    const data = sheet.getDataRange().getValues();
-    
-    // Skip header row if it exists
-    const hasHeader = isNaN(parseInt(data[0][CONFIG.COUNT_COLUMN - 1]));
-    const startRow = hasHeader ? 1 : 0;
-    
-    // Prepare locations array
-    const locations = [];
-    
-    for (let i = startRow; i < data.length; i++) {
-      const row = data[i];
-      const name = row[CONFIG.NAME_COLUMN - 1];
-      const address = row[CONFIG.ADDRESS_COLUMN - 1];
-      const count = row[CONFIG.COUNT_COLUMN - 1];
-      
-      if (name && address) {
-        const location = {
-          name: name.toString().trim(),
-          address: address.toString().trim(),
-          count: parseInt(count) || 0,
-          // Add color coding based on availability
-          markerColor: getMarkerColor(parseInt(count) || 0),
-          description: `Available: ${count}`
-        };
-        
-        // Add optional fields if they exist
-        if (CONFIG.PHONE_COLUMN && row[CONFIG.PHONE_COLUMN - 1]) {
-          location.phone = row[CONFIG.PHONE_COLUMN - 1];
-        }
-        if (CONFIG.HOURS_COLUMN && row[CONFIG.HOURS_COLUMN - 1]) {
-          location.hours = row[CONFIG.HOURS_COLUMN - 1];
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DW Location Tracker - v2.1 with Sheets Integration</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
         
-        locations.push(location);
-      }
-    }
-    
-    // Update Google My Maps
-    updateMyMap(locations);
-    
-    // Log success
-    console.log(`Synced ${locations.length} locations to map`);
-    
-    // Update last sync time in sheet
-    updateLastSyncTime();
-    
-  } catch (error) {
-    console.error('Sync error:', error);
-    SpreadsheetApp.getUi().alert('❌ Sync failed: ' + error.message);
-  }
-}
-
-/**
- * On edit trigger - Syncs when sheet is edited
- */
-function onSheetEdit(e) {
-  // Only sync if edit was in the data columns
-  const range = e.range;
-  const sheet = range.getSheet();
-  
-  if (sheet.getName() === CONFIG.SHEET_NAME) {
-    // Debounce - wait 2 seconds before syncing to avoid multiple rapid syncs
-    Utilities.sleep(2000);
-    syncSheetToMap();
-  }
-}
-
-/**
- * Update Google My Maps with new data
- */
-function updateMyMap(locations) {
-  // Method 1: Using Maps API (Recommended)
-  const mapsUrl = `https://www.google.com/maps/d/u/0/edit?mid=${CONFIG.MAP_ID}`;
-  
-  // Create KML format for import
-  const kml = createKML(locations);
-  
-  // Save KML to Drive
-  const blob = Utilities.newBlob(kml, 'application/vnd.google-earth.kml+xml', 'locations.kml');
-  const file = DriveApp.createFile(blob);
-  
-  // Get the file URL
-  const fileUrl = file.getUrl();
-  
-  // Note: Full automation requires Maps API access
-  // For now, we'll create an importable file and notify user
-  
-  // Create import instructions
-  const htmlOutput = HtmlService.createHtmlOutput(`
-    <div style="font-family: Arial, sans-serif; padding: 20px;">
-      <h2>🗺️ Map Update Ready!</h2>
-      <p><strong>${locations.length} locations</strong> processed from your sheet.</p>
-      
-      <h3>Option 1: Auto-Import (Recommended)</h3>
-      <ol>
-        <li>Open your <a href="${mapsUrl}" target="_blank">Google My Map</a></li>
-        <li>Click "Import" layer</li>
-        <li>Select "Google Drive" and search for "locations.kml"</li>
-        <li>Import will happen automatically</li>
-      </ol>
-      
-      <h3>Option 2: Direct Link</h3>
-      <p><a href="${fileUrl}" target="_blank">Download KML file</a> and import manually</p>
-      
-      <p style="color: green; margin-top: 20px;">✅ Next auto-sync in ${CONFIG.REFRESH_INTERVAL} minutes</p>
-    </div>
-  `).setWidth(400).setHeight(300);
-  
-  SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Map Sync Status');
-  
-  // Clean up old KML files
-  cleanupOldFiles();
-}
-
-/**
- * Create KML format for Google My Maps
- */
-function createKML(locations) {
-  let kml = `<?xml version="1.0" encoding="UTF-8"?>
-<kml xmlns="http://www.opengis.net/kml/2.2">
-  <Document>
-    <name>DW Locations</name>
-    <description>Auto-synced from Google Sheets</description>
-    
-    <!-- Define styles for different availability levels -->
-    <Style id="available">
-      <IconStyle>
-        <color>ff00ff00</color>
-        <Icon>
-          <href>http://maps.google.com/mapfiles/kml/pushpin/grn-pushpin.png</href>
-        </Icon>
-      </IconStyle>
-    </Style>
-    
-    <Style id="low">
-      <IconStyle>
-        <color>ff00a5ff</color>
-        <Icon>
-          <href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
-        </Icon>
-      </IconStyle>
-    </Style>
-    
-    <Style id="unavailable">
-      <IconStyle>
-        <color>ff0000ff</color>
-        <Icon>
-          <href>http://maps.google.com/mapfiles/kml/pushpin/red-pushpin.png</href>
-        </Icon>
-      </IconStyle>
-    </Style>
-`;
-  
-  // Add each location as a placemark
-  locations.forEach(location => {
-    const styleId = location.count === 0 ? 'unavailable' : 
-                    location.count <= 5 ? 'low' : 'available';
-    
-    kml += `
-    <Placemark>
-      <name>${escapeXml(location.name)}</name>
-      <description><![CDATA[
-        <div>
-          <p><strong>Address:</strong> ${location.address}</p>
-          <p><strong>Available:</strong> ${location.count}</p>
-          ${location.phone ? `<p><strong>Phone:</strong> ${location.phone}</p>` : ''}
-          ${location.hours ? `<p><strong>Hours:</strong> ${location.hours}</p>` : ''}
-          <p><em>Last updated: ${new Date().toLocaleString()}</em></p>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-color: #4CAF50;
+            --warning-color: #FF9800;
+            --danger-color: #f44336;
+            --info-color: #2196F3;
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: var(--primary-gradient);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+        
+        body.dark-mode {
+            --primary-gradient: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+        }
+        
+        .header {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            text-align: center;
+            color: white;
+            border-bottom: 1px solid var(--glass-border);
+            position: relative;
+        }
+        
+        .header h1 {
+            font-size: 1.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .status {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        
+        .theme-toggle {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .theme-toggle:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+        
+        .config-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            margin: 1rem;
+            border-radius: 12px;
+            border: 1px solid var(--glass-border);
+            animation: slideIn 0.5s ease;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .config-panel h3 {
+            color: white;
+            margin-bottom: 1rem;
+        }
+        
+        .input-group {
+            margin-bottom: 1rem;
+        }
+        
+        .input-group label {
+            display: block;
+            color: white;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .input-group input,
+        .input-group select {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .input-group input::placeholder {
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .input-group input:focus,
+        .input-group select:focus {
+            outline: none;
+            border-color: var(--success-color);
+            box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+        }
+        
+        .btn {
+            background: linear-gradient(45deg, var(--success-color), #45a049);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.3);
+            transform: translate(-50%, -50%);
+            transition: width 0.6s, height 0.6s;
+        }
+        
+        .btn:hover::before {
+            width: 300px;
+            height: 300px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(45deg, var(--info-color), #1976D2);
+        }
+        
+        .btn-secondary:hover {
+            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
+        }
+        
+        .btn-danger {
+            background: linear-gradient(45deg, var(--danger-color), #d32f2f);
+        }
+        
+        .btn-warning {
+            background: linear-gradient(45deg, var(--warning-color), #f57c00);
+        }
+        
+        .map-container {
+            flex: 1;
+            margin: 1rem;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            min-height: 500px;
+            position: relative;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+            min-height: 500px;
+        }
+        
+        .map-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .map-control-btn {
+            background: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
+            font-size: 1.2rem;
+        }
+        
+        .map-control-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+        
+        .info-panel {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .location-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background: white;
+            margin-bottom: 0.5rem;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            border: 2px solid transparent;
+        }
+        
+        .location-item:hover {
+            transform: translateX(5px);
+            border-color: var(--info-color);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+        
+        .location-name {
+            font-weight: 500;
+        }
+        
+        .location-count {
+            background: var(--success-color);
+            color: white;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            min-width: 30px;
+            text-align: center;
+        }
+        
+        .location-count.zero {
+            background: #999;
+        }
+        
+        .location-count.low {
+            background: var(--warning-color);
+        }
+        
+        .qr-container {
+            text-align: center;
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            margin: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            animation: fadeIn 0.5s ease;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .alert {
+            background: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.3);
+            color: var(--warning-color);
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem;
+            animation: slideDown 0.3s ease;
+        }
+        
+        @keyframes slideDown {
+            from {
+                transform: translateY(-10px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+        
+        .alert.success {
+            background: rgba(76, 175, 80, 0.1);
+            border-color: rgba(76, 175, 80, 0.3);
+            color: var(--success-color);
+        }
+        
+        .alert.error {
+            background: rgba(244, 67, 54, 0.1);
+            border-color: rgba(244, 67, 54, 0.3);
+            color: var(--danger-color);
+        }
+        
+        .alert.info {
+            background: rgba(33, 150, 243, 0.1);
+            border-color: rgba(33, 150, 243, 0.3);
+            color: var(--info-color);
+        }
+        
+        .loading {
+            text-align: center;
+            color: white;
+            padding: 2rem;
+        }
+        
+        .spinner {
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .setup-form {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 2rem;
+            border-radius: 12px;
+            margin: 1rem;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            display: none;
+        }
+        
+        .setup-form.active {
+            display: block;
+            animation: slideIn 0.5s ease;
+        }
+        
+        .setup-form h3 {
+            margin-bottom: 1.5rem;
+            color: #333;
+        }
+        
+        .setup-form input,
+        .setup-form select {
+            background: white;
+            border: 2px solid #ddd;
+            color: #333;
+        }
+        
+        .setup-form input:focus,
+        .setup-form select:focus {
+            border-color: var(--success-color);
+        }
+        
+        .quick-start {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            border-left: 4px solid var(--success-color);
+        }
+        
+        .quick-start h4 {
+            color: white;
+            margin-bottom: 0.5rem;
+        }
+        
+        .quick-start p {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        
+        .stats-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin: 1rem;
+        }
+        
+        .stat-card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid var(--glass-border);
+            text-align: center;
+            color: white;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            opacity: 0.9;
+        }
+        
+        .filter-controls {
+            display: flex;
+            gap: 1rem;
+            margin: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .filter-btn {
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .filter-btn.active {
+            background: var(--success-color);
+            border-color: var(--success-color);
+        }
+        
+        .filter-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        @media (max-width: 768px) {
+            .config-panel, .setup-form {
+                margin: 0.5rem;
+            }
+            
+            .map-container {
+                margin: 0.5rem;
+                min-height: 400px;
+            }
+            
+            .theme-toggle {
+                position: static;
+                margin-top: 1rem;
+            }
+            
+            .filter-controls {
+                justify-content: center;
+            }
+        }
+        
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            display: none;
+        }
+        
+        .loading-overlay.active {
+            display: flex;
+        }
+        
+        .loading-content {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        @keyframes pulse {
+            0% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+            }
+        }
+        
+        .live-indicator {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            background: var(--success-color);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+            margin-left: 0.5rem;
+        }
+        
+        /* Custom marker styles */
+        .custom-marker {
+            background: white;
+            border-radius: 8px;
+            padding: 4px 8px;
+            font-weight: bold;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        
+        .custom-marker::after {
+            content: '';
+            position: absolute;
+            bottom: -8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 8px solid transparent;
+            border-right: 8px solid transparent;
+            border-top: 8px solid white;
+        }
+        
+        .range-indicator {
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            display: inline-block;
+            margin: 0.5rem;
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p>Processing locations...</p>
         </div>
-      ]]></description>
-      <styleUrl>#${styleId}</styleUrl>
-      <address>${escapeXml(location.address)}</address>
-    </Placemark>`;
-  });
-  
-  kml += `
-  </Document>
-</kml>`;
-  
-  return kml;
-}
+    </div>
 
-/**
- * Get marker color based on availability
- */
-function getMarkerColor(count) {
-  if (count === 0) return 'red';
-  if (count <= 5) return 'yellow';
-  return 'green';
-}
+    <div class="header">
+        <button class="theme-toggle" id="themeToggle">🌙 Dark</button>
+        <h1>🗺️ DW Location Tracker v2.1 <span class="live-indicator"></span></h1>
+        <div class="status" id="status">Loading configuration...</div>
+    </div>
 
-/**
- * Escape XML special characters
- */
-function escapeXml(text) {
-  return text.toString()
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&apos;');
-}
+    <div class="stats-panel" id="statsPanel" style="display: none;">
+        <div class="stat-card">
+            <div class="stat-value" id="totalLocations">0</div>
+            <div class="stat-label">Total Locations</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="availableCount">0</div>
+            <div class="stat-label">Available</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="nearbyCount">0</div>
+            <div class="stat-label">Within 3 Miles</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value" id="lastUpdate">--:--</div>
+            <div class="stat-label">Last Update</div>
+        </div>
+    </div>
 
-/**
- * Update last sync timestamp in sheet
- */
-function updateLastSyncTime() {
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEET_NAME);
-  const lastRow = sheet.getLastRow();
-  const lastCol = sheet.getLastColumn();
-  
-  // Add timestamp in corner of sheet
-  sheet.getRange(lastRow + 2, 1).setValue('Last Sync:');
-  sheet.getRange(lastRow + 2, 2).setValue(new Date().toLocaleString());
-}
+    <div class="filter-controls" id="filterControls" style="display: none;">
+        <button class="filter-btn active" data-filter="all">All Locations</button>
+        <button class="filter-btn" data-filter="available">Available Only</button>
+        <button class="filter-btn" data-filter="nearby">Within 3 Miles</button>
+        <button class="filter-btn" data-filter="zero">Out of Stock</button>
+    </div>
 
-/**
- * Clean up old KML files from Drive
- */
-function cleanupOldFiles() {
-  const files = DriveApp.getFilesByName('locations.kml');
-  const filesToKeep = 3; // Keep last 3 versions
-  const fileList = [];
-  
-  while (files.hasNext()) {
-    fileList.push(files.next());
-  }
-  
-  // Sort by date (newest first)
-  fileList.sort((a, b) => b.getDateCreated() - a.getDateCreated());
-  
-  // Delete old files
-  for (let i = filesToKeep; i < fileList.length; i++) {
-    fileList[i].setTrashed(true);
-  }
-}
+    <div class="config-panel" id="mainPanel">
+        <div class="quick-start">
+            <h4>🚀 Quick Start Guide</h4>
+            <p>This version integrates with Google Sheets API to fetch your location data in real-time!</p>
+        </div>
+        
+        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+            <button class="btn" id="initBtn">🚀 Initialize App</button>
+            <button class="btn btn-secondary" id="qrBtn" disabled>📱 Generate 3-Mile QR</button>
+            <button class="btn btn-secondary" id="refreshBtn" disabled>🔄 Refresh</button>
+            <button class="btn btn-warning" id="exportBtn" disabled>📥 Export Data</button>
+            <button class="btn btn-danger" id="setupBtn">⚙️ Settings</button>
+        </div>
+        
+        <div class="input-group" style="margin-top: 1rem;">
+            <label for="autoRefresh">Auto-refresh interval:</label>
+            <select id="autoRefresh">
+                <option value="0">Disabled</option>
+                <option value="30000">30 seconds</option>
+                <option value="60000">1 minute</option>
+                <option value="300000">5 minutes</option>
+                <option value="600000">10 minutes</option>
+            </select>
+        </div>
+        
+        <div class="input-group">
+            <label for="rangeSelector">QR Code Range:</label>
+            <select id="rangeSelector">
+                <option value="1">1 Mile</option>
+                <option value="2">2 Miles</option>
+                <option value="3" selected>3 Miles</option>
+                <option value="5">5 Miles</option>
+                <option value="10">10 Miles</option>
+                <option value="all">All Locations</option>
+            </select>
+        </div>
+    </div>
 
-// ============= MENU FUNCTIONS =============
+    <div class="setup-form" id="setupForm">
+        <h3>⚙️ Configuration Settings</h3>
+        
+        <div style="background: #c8e6c9; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; border-left: 4px solid #4CAF50;">
+            <h4 style="margin: 0 0 0.5rem 0; color: #2e7d32;">✨ Easiest Method - No API Needed!</h4>
+            <ol style="margin: 0; padding-left: 1.5rem; color: #333; font-size: 0.9rem;">
+                <li>Open your Google Sheet</li>
+                <li>Click <strong>File → Share → Publish to web</strong></li>
+                <li>Select <strong>Entire Document</strong> and <strong>CSV</strong> format</li>
+                <li>Click <strong>Publish</strong> and confirm</li>
+                <li>Enter just your Sheet ID below - no API key needed!</li>
+            </ol>
+        </div>
+        
+        <div style="background: #e3f4ff; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+            <h4 style="margin: 0 0 0.5rem 0; color: #1976d2;">📋 Alternative: Use Google Sheets API</h4>
+            <ol style="margin: 0; padding-left: 1.5rem; color: #555; font-size: 0.9rem;">
+                <li>Enable Google Sheets API in Cloud Console</li>
+                <li>Add Sheets API permission to your API key</li>
+                <li>Make sheet viewable by "Anyone with link"</li>
+            </ol>
+        </div>
+        
+        <div class="input-group">
+            <label for="apiKey">Google Maps API Key: <span style="color: red;">*</span></label>
+            <input type="password" id="apiKey" placeholder="Enter your Google Maps API key" required>
+        </div>
+        <div class="input-group">
+            <label for="sheetId">Google Sheets ID: <span style="color: red;">*</span></label>
+            <input type="text" id="sheetId" placeholder="Enter your Google Sheets ID (from the URL)" required>
+            <small style="color: #666;">Find this in: docs.google.com/spreadsheets/d/<strong>[SHEET_ID]</strong>/edit</small>
+        </div>
+        <div class="input-group">
+            <label for="range">Sheet Range:</label>
+            <input type="text" id="range" value="Sheet1!A:C" placeholder="e.g., Sheet1!A:C">
+            <small style="color: #666;">Leave default if your data starts at A1</small>
+        </div>
+        <div class="input-group">
+            <label for="sheetsApiKey">Google Sheets API Key (optional):</label>
+            <input type="password" id="sheetsApiKey" placeholder="Only needed if not using publish method">
+            <small style="color: #666;">Skip this if you published your sheet to web</small>
+        </div>
+        <div class="input-group">
+            <label for="userId">User ID:</label>
+            <input type="text" id="userId" placeholder="Unique identifier (optional)">
+        </div>
+        
+        <button class="btn" id="saveBtn">💾 Save Configuration</button>
+        <button class="btn btn-secondary" id="testBtn">🧪 Test Connection</button>
+        <button class="btn btn-secondary" id="cancelBtn">❌ Cancel</button>
+        <button class="btn btn-secondary" id="demoBtn">🎮 Demo Mode</button>
+        <button class="btn btn-danger" id="clearBtn">🗑️ Clear All Data</button>
+    </div>
 
-/**
- * Create custom menu in Google Sheets
- */
-function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('🗺️ Map Sync')
-    .addItem('⚡ Sync Now', 'syncSheetToMap')
-    .addItem('⚙️ Setup Auto-Sync', 'setupAutoSync')
-    .addItem('🔍 Check Sync Status', 'checkSyncStatus')
-    .addSeparator()
-    .addItem('📍 Open My Map', 'openMyMap')
-    .addItem('❌ Stop Auto-Sync', 'stopAutoSync')
-    .addToUi();
-}
+    <div class="map-container">
+        <div class="map-controls">
+            <button class="map-control-btn" id="centerBtn" title="Center on my location">📍</button>
+            <button class="map-control-btn" id="fitBtn" title="Fit all markers">🔍</button>
+            <button class="map-control-btn" id="satelliteBtn" title="Toggle satellite">🛰️</button>
+        </div>
+        <div id="map"></div>
+    </div>
 
-/**
- * Check sync status
- */
-function checkSyncStatus() {
-  const triggers = ScriptApp.getProjectTriggers();
-  const hasTrigger = triggers.some(t => t.getHandlerFunction() === 'syncSheetToMap');
-  
-  if (hasTrigger) {
-    SpreadsheetApp.getUi().alert(
-      '✅ Auto-sync is ACTIVE\n\n' +
-      `Syncing every ${CONFIG.REFRESH_INTERVAL} minutes\n` +
-      'Your map updates automatically when you edit the sheet!'
-    );
-  } else {
-    SpreadsheetApp.getUi().alert(
-      '❌ Auto-sync is INACTIVE\n\n' +
-      'Click "Setup Auto-Sync" to enable automatic updates.'
-    );
-  }
-}
+    <div class="info-panel" id="infoPanel" style="display: none;">
+        <h3>📍 Locations Near You</h3>
+        <div id="locationsList"></div>
+    </div>
 
-/**
- * Open Google My Map in new tab
- */
-function openMyMap() {
-  const htmlOutput = HtmlService.createHtmlOutput(`
+    <div class="qr-container" id="qrContainer" style="display: none;">
+        <h3>📱 Mobile Access QR Code</h3>
+        <div id="qrCode"></div>
+        <p style="margin-top: 1rem; color: #666;">Scan to access on mobile device</p>
+        <button class="btn btn-secondary" onclick="document.getElementById('qrContainer').style.display='none'">Close</button>
+    </div>
+
+    <div class="alert" id="alertDiv" style="display: none;"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/supabase/2.39.7/umd.min.js"></script>
     <script>
-      window.open('https://www.google.com/maps/d/u/0/edit?mid=${CONFIG.MAP_ID}', '_blank');
-      google.script.host.close();
-    </script>
-  `);
-  SpreadsheetApp.getUi().showModalDialog(htmlOutput, 'Opening Map...');
-}
+        // DW Location Tracker v2.1 - With Google Sheets Integration
+        
+        // Global variables
+        let map;
+        let markers = [];
+        let userLocation = null;
+        let sheetsData = [];
+        let updateInterval;
+        let supabase;
+        let currentFilter = 'all';
+        let mapType = 'roadmap';
+        let autoRefreshInterval;
+        let advancedMarkersLoaded = false;
+        let selectedRange = 3; // Default 3 miles
 
-/**
- * Stop auto-sync
- */
-function stopAutoSync() {
-  const triggers = ScriptApp.getProjectTriggers();
-  triggers.forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  SpreadsheetApp.getUi().alert('Auto-sync has been stopped.');
-}
+        // Supabase configuration
+        const SUPABASE_URL = 'https://xjggcomfaarjfipmwjkc.supabase.co';
+        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqZ2djb21mYWFyamZpcG13amtjIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUxNDAxODksImV4cCI6MjA3MDcxNjE4OX0.7YKku0E3SKDo_J4w6st7-jNsi4zCGmyALGsurx_Jlmc';
+
+        // App state
+        const appState = {
+            apiKey: '',
+            sheetId: '',
+            range: 'Sheet1!A:C',
+            sheetsApiKey: '',
+            userId: '',
+            initialized: false
+        };
+
+        // Initialize Supabase
+        try {
+            if (typeof window.supabase !== 'undefined') {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+        } catch (error) {
+            console.log('Supabase not configured');
+        }
+
+        // Utility functions
+        function showAlert(message, type = 'info') {
+            const alertDiv = document.getElementById('alertDiv');
+            alertDiv.textContent = message;
+            alertDiv.style.display = 'block';
+            alertDiv.className = `alert ${type}`;
+            
+            setTimeout(() => {
+                alertDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        function updateStatus(message) {
+            document.getElementById('status').textContent = message;
+        }
+
+        function showLoadingOverlay(show = true) {
+            document.getElementById('loadingOverlay').classList.toggle('active', show);
+        }
+
+        function updateStats() {
+            const total = sheetsData.length;
+            const available = sheetsData.filter(l => l.count > 0).length;
+            const nearby = sheetsData.filter(l => l.distance <= 3).length; // Changed to 3 miles
+            const now = new Date();
+            const time = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            
+            document.getElementById('totalLocations').textContent = total;
+            document.getElementById('availableCount').textContent = available;
+            document.getElementById('nearbyCount').textContent = nearby;
+            document.getElementById('lastUpdate').textContent = time;
+            
+            document.getElementById('statsPanel').style.display = 'grid';
+        }
+
+        // Theme toggle
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+            const btn = document.getElementById('themeToggle');
+            const isDark = document.body.classList.contains('dark-mode');
+            btn.textContent = isDark ? '☀️ Light' : '🌙 Dark';
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        }
+
+        // Filter functions
+        function applyFilter(filter) {
+            currentFilter = filter;
+            document.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.filter === filter);
+            });
+            
+            let filteredData = [...sheetsData];
+            
+            switch(filter) {
+                case 'available':
+                    filteredData = sheetsData.filter(l => l.count > 0);
+                    break;
+                case 'nearby':
+                    filteredData = sheetsData.filter(l => l.distance <= 3); // Changed to 3 miles
+                    break;
+                case 'zero':
+                    filteredData = sheetsData.filter(l => l.count === 0);
+                    break;
+            }
+            
+            updateMarkers(filteredData);
+            updateLocationsList(filteredData);
+        }
+
+        function updateMarkers(data) {
+            markers.forEach(marker => {
+                const shouldShow = data.some(d => {
+                    const markerPos = marker.position || marker.getPosition();
+                    const lat = typeof markerPos.lat === 'function' ? markerPos.lat() : markerPos.lat;
+                    const lng = typeof markerPos.lng === 'function' ? markerPos.lng() : markerPos.lng;
+                    return d.position.lat() === lat && d.position.lng() === lng;
+                });
+                
+                if (marker.setMap) {
+                    marker.setMap(shouldShow ? map : null);
+                } else if (marker.map) {
+                    marker.map = shouldShow ? map : null;
+                }
+            });
+        }
+
+        // Export data function
+        function exportData() {
+            const csvContent = "data:text/csv;charset=utf-8," 
+                + "Name,Address,Count,Distance\n"
+                + sheetsData.map(l => 
+                    `"${l.name}","${l.address}",${l.count},${l.distance.toFixed(2)}`
+                ).join("\n");
+            
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", `dw_locations_${new Date().toISOString()}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            showAlert('Data exported successfully!', 'success');
+        }
+
+        // Clear all data
+        async function clearAllData() {
+            if (confirm('Are you sure you want to clear all configuration data?')) {
+                localStorage.clear();
+                if (supabase) {
+                    await supabase.from('app_configurations').delete().eq('user_id', appState.userId);
+                }
+                location.reload();
+            }
+        }
+
+        // Auto-refresh setup
+        function setupAutoRefresh() {
+            const interval = parseInt(document.getElementById('autoRefresh').value);
+            
+            if (autoRefreshInterval) {
+                clearInterval(autoRefreshInterval);
+                autoRefreshInterval = null;
+            }
+            
+            if (interval > 0) {
+                autoRefreshInterval = setInterval(() => {
+                    refreshData();
+                }, interval);
+                showAlert(`Auto-refresh enabled: every ${interval/1000} seconds`, 'info');
+            }
+        }
+
+        // Map control functions
+        function centerOnUser() {
+            if (userLocation && map) {
+                map.setCenter(userLocation);
+                map.setZoom(14);
+                showAlert('Centered on your location', 'info');
+            }
+        }
+
+        function fitAllMarkers() {
+            if (markers.length === 0) return;
+            
+            const bounds = new google.maps.LatLngBounds();
+            markers.forEach(marker => {
+                const pos = marker.position || marker.getPosition();
+                bounds.extend(pos);
+            });
+            map.fitBounds(bounds);
+        }
+
+        function toggleSatellite() {
+            mapType = mapType === 'roadmap' ? 'satellite' : 'roadmap';
+            map.setMapTypeId(mapType);
+        }
+
+        // FIXED: Generate QR for locations within selected range
+        async function generateDynamicRangeQR() {
+            if (!sheetsData || sheetsData.length === 0) {
+                showAlert('Please load locations first before generating QR code', 'error');
+                return;
+            }
+            
+            // Get selected range from dropdown
+            const rangeValue = document.getElementById('rangeSelector').value;
+            selectedRange = rangeValue === 'all' ? Infinity : parseFloat(rangeValue);
+            
+            // Filter locations within selected range
+            const nearbyLocations = selectedRange === Infinity 
+                ? sheetsData 
+                : sheetsData.filter(location => location.distance <= selectedRange);
+            
+            if (nearbyLocations.length === 0) {
+                showAlert(`No locations found within ${selectedRange} miles`, 'warning');
+                return;
+            }
+            
+            console.log(`Found ${nearbyLocations.length} locations within ${selectedRange} miles`);
+            
+            // Create Google Maps URL with all nearby locations
+            let mapsUrl = '';
+            
+            if (nearbyLocations.length === 1) {
+                // Single location - direct navigation
+                const location = nearbyLocations[0];
+                mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(location.address)}&travelmode=driving`;
+            } else {
+                // Multiple locations - create a custom map search URL
+                // This will show all locations as search results in Google Maps
+                const searchQuery = nearbyLocations
+                    .map(loc => `${loc.name} ${loc.address}`)
+                    .join(' OR ');
+                
+                // Alternative: Create waypoints URL for navigation
+                if (nearbyLocations.length <= 10) {
+                    // Google Maps supports up to 10 waypoints
+                    const origin = 'Current+Location';
+                    const destination = encodeURIComponent(nearbyLocations[nearbyLocations.length - 1].address);
+                    const waypoints = nearbyLocations.slice(0, -1)
+                        .map(loc => encodeURIComponent(loc.address))
+                        .join('|');
+                    
+                    mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
+                } else {
+                    // Too many locations for waypoints, use search instead
+                    mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery)}`;
+                }
+            }
+            
+            // Display QR container with dynamic content
+            const qrContainer = document.getElementById('qrContainer');
+            qrContainer.innerHTML = `
+                <h3>📱 Locations Within ${selectedRange === Infinity ? 'All' : selectedRange + ' Mile'} Range</h3>
+                <div class="range-indicator">
+                    ${nearbyLocations.length} location${nearbyLocations.length > 1 ? 's' : ''} found
+                </div>
+                <div id="qrCodeDisplay" style="margin: 20px auto; width: 256px;"></div>
+                <div style="max-height: 200px; overflow-y: auto; text-align: left; margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px;">
+                    <strong>Included Locations:</strong>
+                    <ul style="margin: 10px 0; padding-left: 20px;">
+                        ${nearbyLocations
+                            .sort((a, b) => a.distance - b.distance)
+                            .map(loc => `
+                                <li style="margin: 5px 0;">
+                                    <strong>${loc.name}</strong> (${loc.distance.toFixed(1)} mi)<br>
+                                    <span style="color: #666; font-size: 0.9em;">
+                                        ${loc.address} - Available: ${loc.count}
+                                    </span>
+                                </li>
+                            `).join('')}
+                    </ul>
+                </div>
+                <div style="margin-top: 20px;">
+                    <a href="${mapsUrl}" target="_blank" class="btn btn-secondary">
+                        📍 Test in Google Maps
+                    </a>
+                    <button class="btn btn-secondary" onclick="document.getElementById('qrContainer').style.display='none'">
+                        Close
+                    </button>
+                </div>
+                <details style="margin-top: 15px;">
+                    <summary style="cursor: pointer; color: #666;">Advanced Options</summary>
+                    <div style="margin-top: 10px; padding: 10px; background: #f5f5f5; border-radius: 4px;">
+                        <button onclick="generateOptimizedRoute()" class="btn btn-secondary" style="margin: 5px;">
+                            🚗 Optimize Route Order
+                        </button>
+                        <button onclick="generateAvailableOnlyQR()" class="btn btn-secondary" style="margin: 5px;">
+                            ✅ Available Locations Only
+                        </button>
+                        <button onclick="generateCustomMapInstructions()" class="btn btn-secondary" style="margin: 5px;">
+                            🗺️ Create Custom Map
+                        </button>
+                    </div>
+                </details>
+            `;
+            
+            qrContainer.style.display = 'block';
+            
+            // Generate QR code
+            new QRCode(document.getElementById('qrCodeDisplay'), {
+                text: mapsUrl,
+                width: 256,
+                height: 256,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            
+            showAlert(`QR code generated for ${nearbyLocations.length} locations within ${selectedRange === Infinity ? 'all' : selectedRange + ' mile'} range!`, 'success');
+        }
+        
+        // Generate optimized route
+        window.generateOptimizedRoute = function() {
+            const rangeValue = document.getElementById('rangeSelector').value;
+            const range = rangeValue === 'all' ? Infinity : parseFloat(rangeValue);
+            const nearbyLocations = range === Infinity 
+                ? sheetsData 
+                : sheetsData.filter(loc => loc.distance <= range);
+            
+            if (nearbyLocations.length === 0) return;
+            
+            // Sort by distance for optimal route
+            const sorted = nearbyLocations.sort((a, b) => a.distance - b.distance);
+            
+            // Take up to 10 locations (Google Maps limit)
+            const routeLocations = sorted.slice(0, 10);
+            
+            const origin = 'Current+Location';
+            const destination = encodeURIComponent(routeLocations[routeLocations.length - 1].address);
+            const waypoints = routeLocations.slice(0, -1)
+                .map(loc => encodeURIComponent(loc.address))
+                .join('|');
+            
+            const mapsUrl = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}&waypoints=${waypoints}&travelmode=driving`;
+            
+            updateQRCode(mapsUrl, `Optimized route for ${routeLocations.length} nearest locations`);
+        }
+        
+        // Generate QR for available locations only
+        window.generateAvailableOnlyQR = function() {
+            const rangeValue = document.getElementById('rangeSelector').value;
+            const range = rangeValue === 'all' ? Infinity : parseFloat(rangeValue);
+            const availableNearby = sheetsData.filter(loc => 
+                loc.count > 0 && (range === Infinity || loc.distance <= range)
+            );
+            
+            if (availableNearby.length === 0) {
+                showAlert('No available locations within range', 'warning');
+                return;
+            }
+            
+            const searchQuery = availableNearby
+                .map(loc => `${loc.name} ${loc.address}`)
+                .join(' OR ');
+            
+            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(searchQuery)}`;
+            
+            updateQRCode(mapsUrl, `${availableNearby.length} available locations within ${range === Infinity ? 'all' : range + ' mile'} range`);
+        }
+        
+        // Generate custom map instructions
+        window.generateCustomMapInstructions = function() {
+            const rangeValue = document.getElementById('rangeSelector').value;
+            const range = rangeValue === 'all' ? Infinity : parseFloat(rangeValue);
+            const nearbyLocations = range === Infinity 
+                ? sheetsData 
+                : sheetsData.filter(loc => loc.distance <= range);
+            
+            // Create CSV for Google My Maps
+            const csvContent = 'Name,Address,Available,Distance (miles)\n' + 
+                nearbyLocations.map(loc => 
+                    `"${loc.name}","${loc.address}","${loc.count}","${loc.distance.toFixed(1)}"`
+                ).join('\n');
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const csvUrl = window.URL.createObjectURL(blob);
+            
+            const output = document.getElementById('qrCodeDisplay').parentElement;
+            output.innerHTML += `
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                    <h4>Create Custom Google My Maps</h4>
+                    <ol style="margin: 10px 0; padding-left: 20px; font-size: 0.9em;">
+                        <li>Download the CSV file</li>
+                        <li>Go to <a href="https://mymaps.google.com" target="_blank">Google My Maps</a></li>
+                        <li>Import the CSV to create a custom map</li>
+                        <li>Share the map and generate QR from the link</li>
+                    </ol>
+                    <a href="${csvUrl}" download="dw_locations_${range}_miles.csv" class="btn">
+                        📥 Download CSV (${nearbyLocations.length} locations)
+                    </a>
+                </div>
+            `;
+        }
+        
+        // Helper function to update QR code
+        window.updateQRCode = function(url, description) {
+            const qrDisplay = document.getElementById('qrCodeDisplay');
+            if (qrDisplay) {
+                qrDisplay.innerHTML = '';
+                new QRCode(qrDisplay, {
+                    text: url,
+                    width: 256,
+                    height: 256,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+                
+                // Update description
+                const rangeIndicator = document.querySelector('.range-indicator');
+                if (rangeIndicator) {
+                    rangeIndicator.textContent = description;
+                }
+                
+                // Update test link
+                const testLink = document.querySelector('#qrContainer a[target="_blank"]');
+                if (testLink) {
+                    testLink.href = url;
+                }
+            }
+        }
