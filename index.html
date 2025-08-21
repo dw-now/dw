@@ -2021,7 +2021,7 @@
             });
         }
         
-        // Generate Google Maps QR Code (renamed and simplified)
+        // Generate Google Maps QR Code with all locations
         function generateGoogleMapsQR() {
             console.log('generateGoogleMapsQR called');
             
@@ -2031,59 +2031,207 @@
                 return;
             }
             
-            // Create Google Maps URL
-            let mapsUrl = '';
+            console.log(`Generating QR for ${sheetsData.length} locations`);
             
-            if (sheetsData.length === 1) {
-                // Single location - direct navigation
-                const location = sheetsData[0];
-                mapsUrl = `https://maps.google.com/maps?q=${encodeURIComponent(location.address)}`;
-                console.log('Single location Maps URL:', mapsUrl);
-            } else {
-                // Multiple locations - create a search query with all addresses
-                // This will show multiple pins on Google Maps
-                const addresses = sheetsData.slice(0, 10).map(loc => loc.address);
-                const searchQuery = addresses.join(' / ');
-                mapsUrl = `https://maps.google.com/maps?q=${encodeURIComponent(searchQuery)}`;
-                console.log('Multiple locations Maps URL:', mapsUrl);
-            }
-            
-            // Display QR code container
+            // Display QR code container with options
             const qrContainer = document.getElementById('qrContainer');
             qrContainer.style.display = 'block';
+            
+            // Create different QR code options for different use cases
             qrContainer.innerHTML = `
-                <h3>📱 QR Code - Opens Google Maps</h3>
-                <div id="qrCodeDisplay" style="margin: 20px auto; width: 256px; height: 256px;"></div>
-                <p style="color: #666;">
-                    <strong>Scan to open in Google Maps</strong><br>
-                    This QR code will open Google Maps with your locations
+                <h3>📱 Google Maps QR Code Generator</h3>
+                <p style="color: #666; margin: 10px 0;">
+                    Found <strong>${sheetsData.length} locations</strong> in your sheet
                 </p>
-                <div style="margin-top: 20px;">
-                    <a href="${mapsUrl}" target="_blank" class="btn btn-secondary">
-                        📍 Test Link (Opens Google Maps)
-                    </a>
-                    <button class="btn btn-secondary" onclick="document.getElementById('qrContainer').style.display='none'">
-                        Close
+                
+                <div style="display: grid; gap: 10px; margin: 20px 0;">
+                    <button class="btn" onclick="generateSingleMapQR()">
+                        📍 Generate QR for Nearest Location
+                    </button>
+                    <button class="btn btn-secondary" onclick="generateMultipleQRCodes()">
+                        📋 Generate Individual QR Codes (All ${sheetsData.length} Locations)
+                    </button>
+                    <button class="btn btn-secondary" onclick="generateGoogleMyMapsInstructions()">
+                        🗺️ Create Google My Maps (Shows All Locations)
                     </button>
                 </div>
-                <div style="margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px;">
-                    <small><strong>URL in QR Code:</strong><br>
-                    <code style="word-break: break-all; font-size: 10px;">${mapsUrl}</code></small>
-                </div>
+                
+                <div id="qrOutput" style="margin-top: 20px;"></div>
+                
+                <button class="btn btn-secondary" onclick="document.getElementById('qrContainer').style.display='none'" style="margin-top: 10px;">
+                    Close
+                </button>
             `;
             
-            // Generate the QR code with Google Maps URL
-            const qrcode = new QRCode(document.getElementById('qrCodeDisplay'), {
-                text: mapsUrl,  // This is the Google Maps URL, not the web app URL!
+            // Auto-generate nearest location QR
+            generateSingleMapQR();
+        }
+        
+        // Generate QR for single/nearest location
+        window.generateSingleMapQR = function() {
+            if (!sheetsData || sheetsData.length === 0) return;
+            
+            // Sort by distance and get nearest
+            const nearest = sheetsData.sort((a, b) => a.distance - b.distance)[0];
+            
+            // Create a more specific Google Maps URL
+            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(nearest.name + ' ' + nearest.address)}`;
+            
+            const output = document.getElementById('qrOutput');
+            output.innerHTML = `
+                <h4>Nearest Location QR Code</h4>
+                <div id="singleQR" style="margin: 20px auto; width: 256px; height: 256px;"></div>
+                <p style="color: #666;">
+                    <strong>${nearest.name}</strong><br>
+                    ${nearest.address}<br>
+                    Available: ${nearest.count} | Distance: ${nearest.distance.toFixed(1)} miles
+                </p>
+                <a href="${mapsUrl}" target="_blank" class="btn btn-secondary">
+                    Test in Google Maps
+                </a>
+            `;
+            
+            new QRCode(document.getElementById('singleQR'), {
+                text: mapsUrl,
                 width: 256,
                 height: 256,
                 colorDark: '#000000',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.L
+                colorLight: '#ffffff'
+            });
+        }
+        
+        // Generate multiple QR codes for all locations
+        window.generateMultipleQRCodes = function() {
+            if (!sheetsData || sheetsData.length === 0) return;
+            
+            const output = document.getElementById('qrOutput');
+            output.innerHTML = `
+                <h4>Individual QR Codes for All ${sheetsData.length} Locations</h4>
+                <p style="color: #666; margin: 10px 0;">
+                    Each QR code opens Google Maps for that specific location
+                </p>
+                <div style="max-height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 10px; border-radius: 5px;">
+            `;
+            
+            sheetsData.forEach((location, index) => {
+                const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location.name + ' ' + location.address)}`;
+                
+                const qrDiv = document.createElement('div');
+                qrDiv.style.cssText = 'margin-bottom: 20px; padding: 15px; background: #f9f9f9; border-radius: 5px;';
+                qrDiv.innerHTML = `
+                    <h5 style="margin: 0 0 10px 0;">${index + 1}. ${location.name}</h5>
+                    <div id="qr-${index}" style="width: 150px; height: 150px; margin: 10px 0;"></div>
+                    <p style="font-size: 12px; margin: 5px 0;">
+                        ${location.address}<br>
+                        Available: ${location.count} | Distance: ${location.distance.toFixed(1)} mi
+                    </p>
+                    <a href="${mapsUrl}" target="_blank" style="font-size: 12px;">Open in Maps</a>
+                `;
+                output.querySelector('div').appendChild(qrDiv);
+                
+                // Generate QR code for this location
+                new QRCode(document.getElementById(`qr-${index}`), {
+                    text: mapsUrl,
+                    width: 150,
+                    height: 150,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff'
+                });
             });
             
-            console.log('QR Code generated with URL:', mapsUrl);
-            showAlert('QR code generated! This will open Google Maps directly.', 'success');
+            output.querySelector('div').innerHTML += '</div>';
+            
+            // Add print button
+            output.innerHTML += `
+                <button class="btn btn-secondary" onclick="window.print()" style="margin-top: 10px;">
+                    🖨️ Print All QR Codes
+                </button>
+            `;
+        }
+        
+        // Generate Google My Maps instructions
+        window.generateGoogleMyMapsInstructions = function() {
+            const output = document.getElementById('qrOutput');
+            
+            // Create CSV content for Google My Maps
+            const csvContent = 'Name,Address,Description,Available,Distance\n' + 
+                sheetsData.map(loc => 
+                    `"${loc.name}","${loc.address}","DW Location","${loc.count}","${loc.distance.toFixed(1)} miles"`
+                ).join('\n');
+            
+            const blob = new Blob([csvContent], { type: 'text/csv' });
+            const csvUrl = window.URL.createObjectURL(blob);
+            
+            output.innerHTML = `
+                <h4>🗺️ Create a Google My Maps (Best for All Locations)</h4>
+                <div style="background: #e8f5e9; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                    <p><strong>This is the best way to share all ${sheetsData.length} locations!</strong></p>
+                    <ol style="margin: 10px 0; padding-left: 20px;">
+                        <li>Download the CSV file below</li>
+                        <li>Go to <a href="https://mymaps.google.com" target="_blank">Google My Maps</a></li>
+                        <li>Click "Create a New Map"</li>
+                        <li>Click "Import" and upload the CSV</li>
+                        <li>Choose "Address" for location column</li>
+                        <li>Choose "Name" for title column</li>
+                        <li>Style your markers (use yellow with white border!)</li>
+                        <li>Click "Share" and make it public</li>
+                        <li>Copy the share link and create a QR code for it</li>
+                    </ol>
+                    <a href="${csvUrl}" download="dw_locations.csv" class="btn">
+                        📥 Download CSV for Google My Maps
+                    </a>
+                </div>
+                
+                <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 15px 0;">
+                    <p><strong>Why use Google My Maps?</strong></p>
+                    <ul style="margin: 10px 0; padding-left: 20px;">
+                        <li>Shows ALL locations with custom markers</li>
+                        <li>Users can see all locations at once</li>
+                        <li>Can filter by availability</li>
+                        <li>Works perfectly on mobile</li>
+                        <li>Integrates with navigation</li>
+                        <li>Updates when you edit the map</li>
+                    </ul>
+                </div>
+                
+                <div style="margin-top: 15px;">
+                    <p><strong>After creating your Google My Map:</strong></p>
+                    <input type="text" id="myMapsUrl" placeholder="Paste your Google My Maps share URL here" style="width: 100%; padding: 8px; margin: 10px 0;">
+                    <button class="btn" onclick="generateMyMapsQR()">
+                        Generate QR for My Maps URL
+                    </button>
+                </div>
+                
+                <div id="myMapsQR"></div>
+            `;
+        }
+        
+        // Generate QR for Google My Maps URL
+        window.generateMyMapsQR = function() {
+            const url = document.getElementById('myMapsUrl').value.trim();
+            if (!url) {
+                showAlert('Please enter your Google My Maps URL', 'error');
+                return;
+            }
+            
+            const qrDiv = document.getElementById('myMapsQR');
+            qrDiv.innerHTML = `
+                <h5 style="margin-top: 20px;">Your Google My Maps QR Code</h5>
+                <div id="finalQR" style="margin: 20px auto; width: 256px; height: 256px;"></div>
+                <p style="color: #666;">
+                    This QR code will open your custom map with all ${sheetsData.length} locations!
+                </p>
+            `;
+            
+            new QRCode(document.getElementById('finalQR'), {
+                text: url,
+                width: 256,
+                height: 256,
+                colorDark: '#000000',
+                colorLight: '#ffffff'
+            });
+            
+            showAlert('QR code generated for your Google My Maps!', 'success');
         }
 
         // Initialize app on load
