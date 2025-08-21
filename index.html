@@ -1773,109 +1773,22 @@
             });
         }
 
-        async function createMarker(locationData) {
-            const isZero = locationData.count === 0;
-            const isLow = locationData.count > 0 && locationData.count <= 5;
-            
-            let marker;
-            
-            try {
-                if (advancedMarkersLoaded) {
-                    const { AdvancedMarkerElement, PinElement } = await google.maps.importLibrary("marker");
-                    
-                    // Create custom pin element
-                    const pinElement = new PinElement({
-                        background: isZero ? '#999999' : isLow ? '#FF9800' : '#4CAF50',
-                        borderColor: '#FFFFFF',
-                        glyphColor: '#FFFFFF',
-                        glyph: locationData.count.toString(),
-                        scale: 1.2
-                    });
-                    
-                    marker = new AdvancedMarkerElement({
-                        map: map,
-                        position: locationData.position,
-                        title: `${locationData.name} (${locationData.count} available)`,
-                        content: pinElement.element
-                    });
-                    
-                    // Store position for filtering
-                    marker.position = locationData.position;
-                }
-            } catch (error) {
-                console.log('Using fallback marker creation');
-                advancedMarkersLoaded = false;
+        function createMarker(location) {
+          const position = new google.maps.LatLng(location[1], location[2]);
+          const marker = new google.maps.Marker({
+            position,
+            map: map,
+            title: location[0],
+            icon: {
+              url: 'https://mapicon.maps.sample.com/markers/yellow-border.png', // Replace with the URL of 
+        your custom marker image
+              size: new google.maps.Size(24, 39),
+              origin: new google.maps.Point(0, 0),
+              anchor: new google.maps.Point(12, 39)
             }
-            
-            // If AdvancedMarkerElement failed or not available, don't create old markers
-            // to avoid deprecation warning
-            if (!marker && !advancedMarkersLoaded) {
-                // Create a simple div marker instead
-                const markerDiv = document.createElement('div');
-                markerDiv.style.cssText = `
-                    position: absolute;
-                    background: ${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'};
-                    color: white;
-                    padding: 8px 12px;
-                    border-radius: 20px;
-                    border: 2px solid white;
-                    font-weight: bold;
-                    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-                    cursor: pointer;
-                    z-index: 100;
-                `;
-                markerDiv.textContent = locationData.count.toString();
-                markerDiv.title = `${locationData.name} (${locationData.count} available)`;
-                
-                // Note: This is a simplified approach for demo mode
-                // In production, you'd want to properly position these divs
-                marker = {
-                    position: locationData.position,
-                    setMap: (mapRef) => {
-                        // Simple visibility toggle
-                        markerDiv.style.display = mapRef ? 'block' : 'none';
-                    },
-                    getPosition: () => locationData.position,
-                    element: markerDiv
-                };
-            }
+          });
 
-            if (marker) {
-                const infoWindow = new google.maps.InfoWindow({
-                    content: `
-                        <div style="padding: 15px; min-width: 250px;">
-                            <h3 style="margin: 0 0 10px 0; color: #333;">${locationData.name}</h3>
-                            <p style="margin: 5px 0;"><strong>📍 Address:</strong> ${locationData.address}</p>
-                            <p style="margin: 5px 0;"><strong>📦 Available:</strong> 
-                                <span style="color: ${isZero ? '#999' : isLow ? '#FF9800' : '#4CAF50'}; font-weight: bold;">
-                                    ${locationData.count}
-                                </span>
-                            </p>
-                            <p style="margin: 5px 0;"><strong>📏 Distance:</strong> ${locationData.distance.toFixed(1)} miles</p>
-                            <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #eee;">
-                                <button onclick="window.open('https://maps.google.com/?q=${encodeURIComponent(locationData.address)}', '_blank')" 
-                                        style="background: #4285F4; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-                                    Get Directions
-                                </button>
-                            </div>
-                        </div>
-                    `
-                });
-
-                if (marker.addListener) {
-                    marker.addListener('click', () => {
-                        infoWindow.open({ map, anchor: marker });
-                    });
-                } else if (marker.element) {
-                    marker.element.addEventListener('click', () => {
-                        infoWindow.open(map);
-                    });
-                }
-
-                markers.push(marker);
-            }
-            
-            return marker;
+          markers.push(marker);
         }
 
         function buildMarkerContent(locationData, isZero, isLow) {
