@@ -1986,7 +1986,13 @@
         function setupEventListeners() {
             // Main controls
             document.getElementById('initBtn').addEventListener('click', initializeApp);
-            document.getElementById('qrBtn').addEventListener('click', generateQR);
+            
+            // QR Button - Generate Google Maps QR directly
+            document.getElementById('qrBtn').addEventListener('click', () => {
+                console.log('QR button clicked - generating Google Maps QR');
+                generateGoogleMapsQR();
+            });
+            
             document.getElementById('refreshBtn').addEventListener('click', refreshData);
             document.getElementById('exportBtn').addEventListener('click', exportData);
             document.getElementById('setupBtn').addEventListener('click', showSetupForm);
@@ -2013,6 +2019,71 @@
             document.querySelectorAll('.filter-btn').forEach(btn => {
                 btn.addEventListener('click', () => applyFilter(btn.dataset.filter));
             });
+        }
+        
+        // Generate Google Maps QR Code (renamed and simplified)
+        function generateGoogleMapsQR() {
+            console.log('generateGoogleMapsQR called');
+            
+            // Check if we have location data
+            if (!sheetsData || sheetsData.length === 0) {
+                showAlert('Please load locations first before generating QR code', 'error');
+                return;
+            }
+            
+            // Create Google Maps URL
+            let mapsUrl = '';
+            
+            if (sheetsData.length === 1) {
+                // Single location - direct navigation
+                const location = sheetsData[0];
+                mapsUrl = `https://maps.google.com/maps?q=${encodeURIComponent(location.address)}`;
+                console.log('Single location Maps URL:', mapsUrl);
+            } else {
+                // Multiple locations - create a search query with all addresses
+                // This will show multiple pins on Google Maps
+                const addresses = sheetsData.slice(0, 10).map(loc => loc.address);
+                const searchQuery = addresses.join(' / ');
+                mapsUrl = `https://maps.google.com/maps?q=${encodeURIComponent(searchQuery)}`;
+                console.log('Multiple locations Maps URL:', mapsUrl);
+            }
+            
+            // Display QR code container
+            const qrContainer = document.getElementById('qrContainer');
+            qrContainer.style.display = 'block';
+            qrContainer.innerHTML = `
+                <h3>📱 QR Code - Opens Google Maps</h3>
+                <div id="qrCodeDisplay" style="margin: 20px auto; width: 256px; height: 256px;"></div>
+                <p style="color: #666;">
+                    <strong>Scan to open in Google Maps</strong><br>
+                    This QR code will open Google Maps with your locations
+                </p>
+                <div style="margin-top: 20px;">
+                    <a href="${mapsUrl}" target="_blank" class="btn btn-secondary">
+                        📍 Test Link (Opens Google Maps)
+                    </a>
+                    <button class="btn btn-secondary" onclick="document.getElementById('qrContainer').style.display='none'">
+                        Close
+                    </button>
+                </div>
+                <div style="margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px;">
+                    <small><strong>URL in QR Code:</strong><br>
+                    <code style="word-break: break-all; font-size: 10px;">${mapsUrl}</code></small>
+                </div>
+            `;
+            
+            // Generate the QR code with Google Maps URL
+            const qrcode = new QRCode(document.getElementById('qrCodeDisplay'), {
+                text: mapsUrl,  // This is the Google Maps URL, not the web app URL!
+                width: 256,
+                height: 256,
+                colorDark: '#000000',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.L
+            });
+            
+            console.log('QR Code generated with URL:', mapsUrl);
+            showAlert('QR code generated! This will open Google Maps directly.', 'success');
         }
 
         // Initialize app on load
