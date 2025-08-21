@@ -554,6 +554,7 @@
             border-top: 8px solid white;
         }
     </style>
+<script src="https://unpkg.com/google-maps-react@4"></script>
 </head>
 <body>
     <div class="loading-overlay" id="loadingOverlay">
@@ -1773,23 +1774,94 @@
             });
         }
 
-        function createMarker(location) {
-          const position = new google.maps.LatLng(location[1], location[2]);
-          const marker = new google.maps.Marker({
-            position,
-            map: map,
-            title: location[0],
-            icon: {
-              url: 'https://mapicon.maps.sample.com/markers/yellow-border.png', // Replace with the URL of 
-        your custom marker image
-              size: new google.maps.Size(24, 39),
-              origin: new google.maps.Point(0, 0),
-              anchor: new google.maps.Point(12, 39)
-            }
-          });
+        function createMarker(locationData) {
+            console.log('🎯 Creating marker for:', locationData.name);
 
-          markers.push(marker);
-        }
+            const isZero = locationData.count === 0;
+            const iconColor = isZero ? '#999' : '#FFD700'; // Change the color if needed
+
+            let position;
+            try {
+                if (locationData.position && typeof locationData.position.lat === 'function') {
+                    position = {
+                        lat: locationData.position.lat(),
+                        lng: locationData.position.lng()
+                    };
+                } else if (locationData.position && typeof locationData.position.lat === 'number') {
+                    position = locationData.position;
+                } else {
+                    console.error('❌ Invalid position for marker:', locationData.position);
+                    return null;
+                }
+            } catch (posError) {
+                console.error('❌ Error processing position:', posError);
+                return null;
+            }
+
+            try {
+                const marker = new google.maps.Marker({
+                    position: position,
+                    map: map, // Make sure this is your actual variable name for the map object
+                    title: `DW ${locationData.count} - ${locationData.name}`,
+                    icon: {
+                        path: google.maps.SymbolPath.CIRCLE,
+                        fillColor: iconColor, // Change the fill color if needed
+                        fillOpacity: 1,
+                        strokeColor: '#FFFFFF',
+                        strokeWeight: 3,
+                        scale: 15
+                    },
+                    label: {
+                        text: locationData.count.toString(),
+                        color: '#000000',
+                        fontSize: '12px',
+                        fontWeight: 'bold'
+                    },    
+                    animation: google.maps.Animation.DROP,
+                            zIndex: isZero ? 100 : 200,
+                            visible: true,
+                            optimized: false
+                        });
+
+                const infoWindow = new google.maps.InfoWindow({
+                    content: `
+                        <div style="padding: 15px; min-width: 250px;">
+                            <h3 style="margin: 0 0 10px 0; color: #333;">🎯 DW Location</h3>
+                    <p><strong>Name:</strong> ${locationData.name}</p>
+                    <p><strong>Address:</strong> ${locationData.address}</p>
+                    <p><strong>Available:</strong> <span style="color: ${isZero ? '#999' : 
+'#4CAF50'}; font-weight: bold;">${locationData.count}</span></p>
+                    <p><strong>Distance:</strong> ${locationData.distance.toFixed(1)} miles</p>
+                    <button 
+onclick="window.open('https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(locationclick="window.open('https://www.google.com/maps/dir/?api=1&destination${encodeURIComponent(locationData.address)}', '_blank')"
+                            style="background: #4CAF50; color: white; border: none; padding: 10px 
+20px; border-radius: 5px; cursor: pointer; margin-top: 10px;">
+                            🧭 Get Directions
+                    </button>
+                </div>
+            `
+        });
+
+        marker.addListener('click', () => {
+            markers.forEach(m => {
+                if (m.infoWindow && m.infoWindow !== infoWindow) {
+                    m.infoWindow.close();
+                }
+            });
+            infoWindow.open(map, marker);
+        });
+
+        marker.infoWindow = infoWindow;
+        marker.locationData = locationData;
+
+        markers.push(marker);
+
+        return marker;
+    } catch (markerError) {
+        console.error('❌ Error creating marker:', markerError);
+        return null;
+    }
+}
 
         function buildMarkerContent(locationData, isZero, isLow) {
             const div = document.createElement('div');
