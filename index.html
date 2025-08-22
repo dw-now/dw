@@ -594,7 +594,6 @@
     <div class="alert" id="alertDiv" style="display: none;"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
-    <script async defer src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&callback=initMap&libraries=places"></script>
     <script>
         // Global variables
         let map;
@@ -832,14 +831,17 @@
                 return;
             }
             
-            // Update the Maps API script with the user's API key
-            const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
-            if (existingScript) {
-                existingScript.remove();
+            // Remove any existing Google Maps scripts
+            const existingScripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
+            existingScripts.forEach(script => script.remove());
+            
+            // Clean up any existing Google Maps objects
+            if (window.google && window.google.maps) {
+                delete window.google;
             }
             
             const script = document.createElement('script');
-            script.src = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&callback=initMap&libraries=places`;
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${appState.apiKey}&callback=initMap&libraries=places&loading=async`;
             script.async = true;
             script.defer = true;
             script.onerror = function() {
@@ -847,12 +849,19 @@
                 updateStatus('Map loading failed - check API key');
             };
             
+            console.log('Loading Google Maps with API key:', appState.apiKey.substring(0, 10) + '...');
             document.head.appendChild(script);
         }
 
         // Initialize Google Map (callback function)
         window.initMap = function() {
             console.log('Initializing Google Map...');
+            
+            if (!window.google || !window.google.maps) {
+                console.error('Google Maps API not loaded properly');
+                showAlert('Google Maps API failed to load', 'error');
+                return;
+            }
             
             // Default location (Los Angeles)
             const defaultLocation = { lat: 34.0522, lng: -118.2437 };
@@ -864,57 +873,92 @@
                 placeholder.style.display = 'none';
             }
             
-            map = new google.maps.Map(mapElement, {
-                zoom: 10,
-                center: defaultLocation,
-                mapTypeId: 'roadmap'
-            });
-            
-            // Get user's location
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    function(position) {
-                        userLocation = {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude
-                        };
-                        map.setCenter(userLocation);
-                        map.setZoom(12);
-                        
-                        // Add user location marker
-                        new google.maps.Marker({
-                            position: userLocation,
-                            map: map,
-                            title: 'Your Location',
-                            icon: {
-                                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                                    <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-                                        <circle cx="10" cy="10" r="8" fill="#4285f4" stroke="white" stroke-width="2"/>
-                                        <circle cx="10" cy="10" r="3" fill="white"/>
-                                    </svg>
-                                `),
-                                scaledSize: new google.maps.Size(20, 20)
+            try {
+                map = new google.maps.Map(mapElement, {
+                    zoom: 10,
+                    center: defaultLocation,
+                    mapTypeId: 'roadmap',
+                    mapId: 'DEMO_MAP_ID' // Required for advanced markers
+                });
+                
+                console.log('Map created successfully');
+                
+                // Get user's location
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(
+                        function(position) {
+                            userLocation = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude
+                            };
+                            map.setCenter(userLocation);
+                            map.setZoom(12);
+                            
+                            // Add user location marker using new AdvancedMarkerElement if available
+                            addUserLocationMarker();
+                            
+                            showAlert('Map loaded with your location!', 'success');
+                            updateStatus('Map ready - showing your location');
+                            
+                            // Add markers for sheet data if available
+                            if (sheetsData.length > 0) {
+                                addMarkersToMap();
                             }
-                        });
-                        
-                        showAlert('Map loaded with your location!', 'success');
-                        updateStatus('Map ready - showing your location');
-                        
-                        // Add markers for sheet data if available
-                        if (sheetsData.length > 0) {
-                            addMarkersToMap();
+                        },
+                        function(error) {
+                            console.warn('Geolocation error:', error);
+                            showAlert('Could not get your location. Using default location.', 'warning');
+                            updateStatus('Map ready - using default location');
                         }
-                    },
-                    function() {
-                        showAlert('Could not get your location. Using default location.', 'warning');
-                        updateStatus('Map ready - using default location');
-                    }
-                );
-            } else {
-                showAlert('Geolocation not supported. Using default location.', 'warning');
-                updateStatus('Map ready - using default location');
+                    );
+                } else {
+                    showAlert('Geolocation not supported. Using default location.', 'warning');
+                    updateStatus('Map ready - using default location');
+                }
+                
+            } catch (error) {
+                console.error('Error creating map:', error);
+                showAlert(`Map creation failed: ${error.message}`, 'error');
+                updateStatus('Map creation failed');
             }
         };
+
+        // Add user location marker
+        function addUserLocationMarker() {
+            if (!userLocation || !map) return;
+            
+            try {
+                // Try to use AdvancedMarkerElement if available, fallback to regular Marker
+                if (google.maps.marker && google.maps.marker.AdvancedMarkerElement) {
+                    console.log('Using AdvancedMarkerElement for user location');
+                    
+                    const userMarker = new google.maps.marker.AdvancedMarkerElement({
+                        map: map,
+                        position: userLocation,
+                        title: 'Your Location'
+                    });
+                } else {
+                    console.log('Using legacy Marker for user location');
+                    
+                    new google.maps.Marker({
+                        position: userLocation,
+                        map: map,
+                        title: 'Your Location',
+                        icon: {
+                            url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                                <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+                                    <circle cx="10" cy="10" r="8" fill="#4285f4" stroke="white" stroke-width="2"/>
+                                    <circle cx="10" cy="10" r="3" fill="white"/>
+                                </svg>
+                            `),
+                            scaledSize: new google.maps.Size(20, 20)
+                        }
+                    });
+                }
+            } catch (error) {
+                console.error('Error adding user location marker:', error);
+            }
+        }
 
         // Fetch data from Google Sheets
         async function fetchSheetsData() {
@@ -1112,7 +1156,13 @@
             }
             
             // Clear existing markers
-            markers.forEach(marker => marker.setMap(null));
+            markers.forEach(marker => {
+                if (marker.setMap) {
+                    marker.setMap(null);
+                } else if (marker.map) {
+                    marker.map = null;
+                }
+            });
             markers = [];
             
             console.log(`Adding ${sheetsData.length} markers to map`);
@@ -1123,52 +1173,116 @@
                     return;
                 }
                 
-                // Create marker
-                const marker = new google.maps.Marker({
-                    position: location.position,
-                    map: map,
-                    title: `${location.name}\nAvailable: ${location.count}\nDistance: ${location.distance.toFixed(1)} mi`,
-                    icon: {
-                        url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                            <svg width="30" height="40" viewBox="0 0 30 40" xmlns="http://www.w3.org/2000/svg">
-                                <path d="M15 0C6.7 0 0 6.7 0 15c0 15 15 25 15 25s15-10 15-25c0-8.3-6.7-15-15-15z" 
-                                      fill="${location.count > 0 ? '#4CAF50' : '#999'}"/>
-                                <circle cx="15" cy="15" r="8" fill="white"/>
-                                <text x="15" y="20" text-anchor="middle" font-size="10" font-weight="bold" fill="black">${location.count}</text>
-                            </svg>
-                        `),
-                        scaledSize: new google.maps.Size(30, 40)
+                try {
+                    // Try to use AdvancedMarkerElement if available, fallback to regular Marker
+                    let marker;
+                    
+                    if (google.maps.marker && google.maps.marker.AdvancedMarkerElement) {
+                        console.log(`Using AdvancedMarkerElement for ${location.name}`);
+                        
+                        // Create a custom HTML element for the marker
+                        const markerElement = document.createElement('div');
+                        markerElement.innerHTML = `
+                            <div style="
+                                background: ${location.count > 0 ? '#4CAF50' : '#999'};
+                                color: white;
+                                padding: 4px 8px;
+                                border-radius: 8px;
+                                font-weight: bold;
+                                box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+                                position: relative;
+                                font-size: 12px;
+                            ">
+                                ${location.count}
+                                <div style="
+                                    position: absolute;
+                                    bottom: -8px;
+                                    left: 50%;
+                                    transform: translateX(-50%);
+                                    width: 0;
+                                    height: 0;
+                                    border-left: 8px solid transparent;
+                                    border-right: 8px solid transparent;
+                                    border-top: 8px solid ${location.count > 0 ? '#4CAF50' : '#999'};
+                                "></div>
+                            </div>
+                        `;
+                        
+                        marker = new google.maps.marker.AdvancedMarkerElement({
+                            map: map,
+                            position: location.position,
+                            content: markerElement,
+                            title: `${location.name}\nAvailable: ${location.count}\nDistance: ${location.distance.toFixed(1)} mi`
+                        });
+                        
+                    } else {
+                        console.log(`Using legacy Marker for ${location.name}`);
+                        
+                        marker = new google.maps.Marker({
+                            position: location.position,
+                            map: map,
+                            title: `${location.name}\nAvailable: ${location.count}\nDistance: ${location.distance.toFixed(1)} mi`,
+                            icon: {
+                                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                                    <svg width="30" height="40" viewBox="0 0 30 40" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M15 0C6.7 0 0 6.7 0 15c0 15 15 25 15 25s15-10 15-25c0-8.3-6.7-15-15-15z" 
+                                              fill="${location.count > 0 ? '#4CAF50' : '#999'}"/>
+                                        <circle cx="15" cy="15" r="8" fill="white"/>
+                                        <text x="15" y="20" text-anchor="middle" font-size="10" font-weight="bold" fill="black">${location.count}</text>
+                                    </svg>
+                                `),
+                                scaledSize: new google.maps.Size(30, 40)
+                            }
+                        });
                     }
-                });
-                
-                // Create info window
-                const infoWindow = new google.maps.InfoWindow({
-                    content: `
-                        <div style="padding: 10px;">
-                            <h3 style="margin: 0 0 10px 0; color: #333;">${location.name}</h3>
-                            <p style="margin: 5px 0; color: #666;"><strong>Address:</strong> ${location.address}</p>
-                            <p style="margin: 5px 0; color: #666;"><strong>Available:</strong> ${location.count}</p>
-                            <p style="margin: 5px 0; color: #666;"><strong>Distance:</strong> ${location.distance.toFixed(1)} miles</p>
-                            <a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(location.address)}" 
-                               target="_blank" style="color: #1976d2; text-decoration: none;">Get Directions</a>
-                        </div>
-                    `
-                });
-                
-                marker.addListener('click', () => {
-                    infoWindow.open(map, marker);
-                });
-                
-                markers.push(marker);
+                    
+                    // Create info window
+                    const infoWindow = new google.maps.InfoWindow({
+                        content: `
+                            <div style="padding: 10px;">
+                                <h3 style="margin: 0 0 10px 0; color: #333;">${location.name}</h3>
+                                <p style="margin: 5px 0; color: #666;"><strong>Address:</strong> ${location.address}</p>
+                                <p style="margin: 5px 0; color: #666;"><strong>Available:</strong> ${location.count}</p>
+                                <p style="margin: 5px 0; color: #666;"><strong>Distance:</strong> ${location.distance.toFixed(1)} miles</p>
+                                <a href="https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(location.address)}" 
+                                   target="_blank" style="color: #1976d2; text-decoration: none;">Get Directions</a>
+                            </div>
+                        `
+                    });
+                    
+                    // Add click listener
+                    if (marker.addListener) {
+                        marker.addListener('click', () => {
+                            infoWindow.open(map, marker);
+                        });
+                    } else if (marker.addEventListener) {
+                        marker.addEventListener('click', () => {
+                            infoWindow.open(map, marker);
+                        });
+                    }
+                    
+                    markers.push(marker);
+                    
+                } catch (error) {
+                    console.error(`Error creating marker for ${location.name}:`, error);
+                }
             });
             
             // Fit map to show all markers
             if (markers.length > 0) {
                 const bounds = new google.maps.LatLngBounds();
-                markers.forEach(marker => bounds.extend(marker.getPosition()));
+                
+                markers.forEach(marker => {
+                    const position = marker.position || marker.getPosition();
+                    if (position) {
+                        bounds.extend(position);
+                    }
+                });
+                
                 if (userLocation) {
                     bounds.extend(userLocation);
                 }
+                
                 map.fitBounds(bounds);
                 
                 // Don't zoom in too much for single location
