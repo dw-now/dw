@@ -1229,18 +1229,33 @@
 
         // Generate QR code
         function generateQRCode() {
+            console.log('generateQRCode called');
+            console.log('isDemoMode:', isDemoMode);
+            console.log('appState:', appState);
+            console.log('sheetsData:', sheetsData);
+            
             if (isDemoMode) {
+                console.log('Generating demo QR');
                 generateDemoQR();
                 return;
             }
             
             if (!appState.apiKey || !appState.sheetId) {
+                console.log('Missing configuration');
                 showAlert('Please configure your settings first', 'warning');
                 return;
             }
             
             if (!sheetsData || sheetsData.length === 0) {
-                showAlert('No location data loaded yet. Please initialize the app first.', 'warning');
+                console.log('No data available, generating sample QR');
+                // Generate a sample QR with the configured sheet
+                const mapsUrl = `https://www.google.com/maps/search/?api=1&query=locations+near+me`;
+                showQRModal(
+                    '📱 Sample QR Code',
+                    mapsUrl,
+                    'No location data loaded yet. This is a sample QR code. Please initialize the app first to load your real data.'
+                );
+                showAlert('Sample QR generated. Initialize the app to load real data.', 'warning');
                 return;
             }
             
@@ -1248,11 +1263,15 @@
             const rangeValue = document.getElementById('rangeSelector').value;
             const selectedRange = rangeValue === 'all' ? Infinity : parseFloat(rangeValue);
             
+            console.log('Selected range:', selectedRange);
+            
             // Filter locations within selected range
             let nearbyLocations = sheetsData;
             if (selectedRange !== Infinity) {
                 nearbyLocations = sheetsData.filter(location => location.distance <= selectedRange);
             }
+            
+            console.log('Nearby locations:', nearbyLocations);
             
             if (nearbyLocations.length === 0) {
                 showAlert(`No locations found within ${selectedRange} miles`, 'warning');
@@ -1295,6 +1314,8 @@
                 </div>
             `;
             
+            console.log('Showing QR modal with URL:', mapsUrl);
+            
             showQRModal(
                 `📱 ${rangeText} Range QR Code`,
                 mapsUrl,
@@ -1327,13 +1348,23 @@
 
         // Show QR modal
         function showQRModal(title, url, description) {
+            console.log('showQRModal called with:', title, url);
+            
             const modal = document.getElementById('qrModal');
             const titleEl = document.getElementById('qrTitle');
             const displayEl = document.getElementById('qrCodeDisplay');
             const descEl = document.getElementById('qrDescription');
             
+            if (!modal || !titleEl || !displayEl || !descEl) {
+                console.error('QR Modal elements not found!');
+                showAlert('Error: QR modal elements not found', 'error');
+                return;
+            }
+            
+            console.log('Setting modal content...');
+            
             titleEl.textContent = title;
-            descEl.innerHTML = `<p style="color: #666; margin: 1rem 0;">${description}</p>
+            descEl.innerHTML = `${description}
                                <a href="${url}" target="_blank" class="btn btn-secondary" style="margin: 0.5rem;">
                                    📍 Test in Google Maps
                                </a>`;
@@ -1341,16 +1372,42 @@
             // Clear previous QR code
             displayEl.innerHTML = '';
             
-            // Generate new QR code
-            new QRCode(displayEl, {
-                text: url,
-                width: 200,
-                height: 200,
-                colorDark: '#000000',
-                colorLight: '#ffffff'
-            });
+            console.log('Generating QR code...');
             
+            // Check if QRCode is available
+            if (typeof QRCode === 'undefined') {
+                console.error('QRCode library not loaded!');
+                displayEl.innerHTML = '<p style="color: red;">QR Code library failed to load</p>';
+                showAlert('QR Code library not available', 'error');
+                return;
+            }
+            
+            try {
+                // Generate new QR code
+                new QRCode(displayEl, {
+                    text: url,
+                    width: 200,
+                    height: 200,
+                    colorDark: '#000000',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.H
+                });
+                
+                console.log('QR code generated successfully');
+            } catch (error) {
+                console.error('Error generating QR code:', error);
+                displayEl.innerHTML = `<p style="color: red;">Error generating QR code: ${error.message}</p>`;
+                showAlert('Failed to generate QR code', 'error');
+                return;
+            }
+            
+            console.log('Showing modal...');
             modal.classList.add('active');
+            
+            // Make sure modal is visible
+            modal.style.display = 'flex';
+            
+            showAlert('QR code generated successfully!', 'success');
         }
 
         // Close QR modal
