@@ -1150,8 +1150,12 @@
             document.getElementById('refreshBtn').disabled = false;
             document.getElementById('exportBtn').disabled = false;
             
-            // Update initialize button text
-            document.getElementById('initBtn').textContent = '✅ Configured';
+            // Update initialize button text but keep it functional
+            const initBtn = document.getElementById('initBtn');
+            if (initBtn) {
+                initBtn.textContent = '✅ Re-initialize';
+                initBtn.disabled = false;
+            }
         }
 
         // Toggle setup form
