@@ -37,7 +37,7 @@
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-secondary { background: #2196F3; }
         .btn-danger { background: #f44336; }
-        input { 
+        input, select { 
             width: 100%; 
             padding: 12px; 
             margin: 8px 0; 
@@ -45,7 +45,7 @@
             border-radius: 6px; 
             font-size: 14px;
         }
-        .hidden { display: none; }
+        .hidden { display: none !important; }
         .alert { 
             padding: 15px; 
             margin: 15px 0; 
@@ -80,7 +80,6 @@
             margin: 8px 0; 
             background: #f8f9fa; 
             border-radius: 6px; 
-            border: 1px solid #dee2e6;
         }
         .location-count { 
             background: #4CAF50; 
@@ -109,7 +108,29 @@
             text-align: center; 
             color: #333; 
             max-width: 90%;
-            max-height: 90%;
+        }
+        #mapContainer { 
+            width: 100%; 
+            height: 450px; 
+            background: rgba(255,255,255,0.1); 
+            border-radius: 10px; 
+            margin: 20px auto;
+            max-width: 800px;
+            position: relative;
+        }
+        #mapDiv { 
+            width: 100%; 
+            height: 100%; 
+            border-radius: 10px;
+        }
+        .map-placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255,255,255,0.7);
+            text-align: center;
+            font-size: 18px;
         }
     </style>
 </head>
@@ -121,19 +142,19 @@
 
     <div class="panel" id="mainPanel">
         <p style="margin-bottom: 20px; text-align: center;">
-            Welcome! Click <strong>Demo Mode</strong> to test the app or <strong>Settings</strong> to configure your Google Sheets data.
+            Configure your Google Sheets data, then initialize to see your locations on the map.
         </p>
         <div style="text-align: center;">
             <button class="btn" id="initBtn">🚀 Initialize App</button>
             <button class="btn" id="demoBtn">🎮 Demo Mode</button>
             <button class="btn btn-danger" id="setupBtn">⚙️ Settings</button>
             <button class="btn btn-secondary" id="qrBtn" disabled>📱 Generate QR</button>
-            <button class="btn btn-secondary" id="refreshBtn" disabled>🔄 Refresh Data</button>
+            <button class="btn btn-secondary" id="refreshBtn" disabled>🔄 Refresh</button>
         </div>
         
         <div style="margin-top: 20px;">
             <label><strong>QR Code Range:</strong></label>
-            <select id="rangeSelector" style="width: 100%; padding: 8px; margin: 5px 0; border-radius: 4px;">
+            <select id="rangeSelector">
                 <option value="1">1 Mile</option>
                 <option value="3" selected>3 Miles</option>
                 <option value="5">5 Miles</option>
@@ -144,7 +165,7 @@
     </div>
 
     <div class="setup-form hidden" id="setupForm">
-        <h3 style="margin-bottom: 20px;">⚙️ Configuration Settings</h3>
+        <h3>⚙️ Configuration Settings</h3>
         <div style="background: #e3f2fd; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
             <strong>Setup Instructions:</strong>
             <ol style="margin: 10px 0; padding-left: 20px;">
@@ -159,20 +180,26 @@
         <label><strong>Google Sheets ID:</strong></label>
         <input type="text" id="sheetId" placeholder="Enter Sheet ID from URL">
         <div style="margin-top: 20px; text-align: center;">
-            <button class="btn" id="saveBtn">💾 Save Configuration</button>
-            <button class="btn btn-secondary" id="testBtn">🧪 Test Connection</button>
+            <button class="btn" id="saveBtn">💾 Save</button>
+            <button class="btn btn-secondary" id="testBtn">🧪 Test</button>
             <button class="btn btn-secondary" id="cancelBtn">❌ Cancel</button>
         </div>
     </div>
 
+    <div id="mapContainer">
+        <div id="mapDiv"></div>
+        <div class="map-placeholder" id="mapPlaceholder">
+            🗺️ Map will appear here after initialization
+        </div>
+    </div>
+
     <div class="demo-data hidden" id="demoData">
-        <h3 style="margin-bottom: 20px;">📍 Demo Locations</h3>
-        <p style="margin-bottom: 15px;">Sample locations showing how the app works:</p>
+        <h3>📍 Demo Locations</h3>
         
         <div class="demo-location">
             <div>
                 <div style="font-weight: bold;">Downtown Store</div>
-                <div style="color: #666; font-size: 14px;">123 Main St, Los Angeles, CA</div>
+                <div style="color: #666;">123 Main St, Los Angeles, CA</div>
             </div>
             <div class="location-count">15</div>
         </div>
@@ -180,7 +207,7 @@
         <div class="demo-location">
             <div>
                 <div style="font-weight: bold;">Westside Location</div>
-                <div style="color: #666; font-size: 14px;">456 Ocean Ave, Santa Monica, CA</div>
+                <div style="color: #666;">456 Ocean Ave, Santa Monica, CA</div>
             </div>
             <div class="location-count">8</div>
         </div>
@@ -188,14 +215,14 @@
         <div class="demo-location">
             <div>
                 <div style="font-weight: bold;">Hollywood Branch</div>
-                <div style="color: #666; font-size: 14px;">789 Sunset Blvd, Hollywood, CA</div>
+                <div style="color: #666;">789 Sunset Blvd, Hollywood, CA</div>
             </div>
             <div class="location-count zero">0</div>
         </div>
         
         <div style="margin-top: 25px; text-align: center;">
-            <button class="btn btn-secondary" onclick="generateDemoQR()">📱 Generate Demo QR</button>
-            <button class="btn" onclick="exitDemo()">✕ Exit Demo Mode</button>
+            <button class="btn btn-secondary" onclick="generateDemoQR()">📱 Demo QR</button>
+            <button class="btn" onclick="exitDemo()">✕ Exit Demo</button>
         </div>
     </div>
 
@@ -219,6 +246,7 @@
         let userLocation = null;
 
         document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM Content Loaded');
             loadConfig();
             setupEvents();
             showAlert('Welcome! Configure settings then initialize, or try Demo Mode.', 'info');
@@ -251,257 +279,6 @@
             document.getElementById('refreshBtn').onclick = refreshData;
         }
 
-        function enableButtons() {
-            document.getElementById('qrBtn').disabled = false;
-            document.getElementById('refreshBtn').disabled = false;
-            document.getElementById('initBtn').textContent = '✅ Re-initialize';
-        }
-
-        function initializeApp() {
-            if (!appConfig.apiKey || !appConfig.sheetId) {
-                showAlert('Please configure your API key and Sheet ID in Settings first', 'warning');
-                return;
-            }
-            
-            showAlert('Initializing app with your configuration...', 'info');
-            document.getElementById('status').textContent = 'Initializing...';
-            
-            // Make sure we're showing the main panel and map
-            document.getElementById('mainPanel').classList.remove('hidden');
-            document.getElementById('setupForm').classList.add('hidden');
-            document.getElementById('demoData').classList.add('hidden');
-            
-            // Ensure map container is visible
-            const mapElement = document.getElementById('map');
-            if (mapElement) {
-                mapElement.style.display = 'flex';
-                mapElement.style.visibility = 'visible';
-            }
-            
-            // Load Google Maps first
-            loadGoogleMaps();
-            
-            // Then fetch data from Google Sheets
-            setTimeout(function() {
-                fetchSheetsData();
-            }, 1000);
-            
-            enableButtons();
-        }
-
-        function loadGoogleMaps() {
-            if (!appConfig.apiKey) {
-                showAlert('No API key configured', 'error');
-                return;
-            }
-            
-            // Remove existing Google Maps scripts
-            const existingScripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
-            existingScripts.forEach(function(script) {
-                script.remove();
-            });
-            
-            // Clean up existing Google Maps objects
-            if (window.google && window.google.maps) {
-                delete window.google;
-            }
-            
-            const script = document.createElement('script');
-            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initMap&libraries=places&loading=async';
-            script.async = true;
-            script.defer = true;
-            script.onerror = function() {
-                showAlert('Failed to load Google Maps. Check your API key and ensure Maps JavaScript API is enabled.', 'error');
-                document.getElementById('status').textContent = 'Map loading failed';
-            };
-            
-            console.log('Loading Google Maps with API key:', appConfig.apiKey.substring(0, 10) + '...');
-            document.head.appendChild(script);
-        }
-
-        window.initMap = function() {
-            console.log('initMap called - waiting for DOM to be ready...');
-            
-            // Add a small delay to ensure DOM is fully ready
-            setTimeout(function() {
-                console.log('Attempting to find map element...');
-                
-                const mapElement = document.getElementById('map');
-                console.log('Map element search result:', mapElement);
-                console.log('Document ready state:', document.readyState);
-                console.log('All elements with ID map:', document.querySelectorAll('#map'));
-                
-                if (!mapElement) {
-                    console.error('Map element with ID "map" not found in DOM');
-                    showAlert('Error: Map container not found. Please refresh the page.', 'error');
-                    return;
-                }
-                
-                // Ensure the map element is visible and has proper dimensions
-                mapElement.style.display = 'block';
-                mapElement.style.width = '100%';
-                mapElement.style.height = '400px';
-                mapElement.style.visibility = 'visible';
-                
-                const placeholder = document.getElementById('mapPlaceholder');
-                if (placeholder) {
-                    placeholder.style.display = 'none';
-                }
-                
-                console.log('Map element dimensions:', mapElement.offsetWidth, 'x', mapElement.offsetHeight);
-                
-                if (mapElement.offsetWidth === 0 || mapElement.offsetHeight === 0) {
-                    console.warn('Map element has zero dimensions, forcing size...');
-                    mapElement.style.minWidth = '800px';
-                    mapElement.style.minHeight = '400px';
-                }
-                
-                try {
-                    console.log('Creating Google Map...');
-                    map = new google.maps.Map(mapElement, {
-                        zoom: 10,
-                        center: { lat: 34.0522, lng: -118.2437 },
-                        mapTypeId: 'roadmap'
-                    });
-                    
-                    console.log('Map created successfully:', map);
-                    showAlert('Google Maps loaded successfully!', 'success');
-                    document.getElementById('status').textContent = 'Map loaded - getting your location...';
-                    
-                    // Get user location
-                    if (navigator.geolocation) {
-                        navigator.geolocation.getCurrentPosition(function(position) {
-                            userLocation = {
-                                lat: position.coords.latitude,
-                                lng: position.coords.longitude
-                            };
-                            map.setCenter(userLocation);
-                            map.setZoom(12);
-                            
-                            // Add user location indicator
-                            new google.maps.Circle({
-                                strokeColor: '#4285f4',
-                                strokeOpacity: 0.8,
-                                strokeWeight: 3,
-                                fillColor: '#4285f4',
-                                fillOpacity: 0.8,
-                                map: map,
-                                center: userLocation,
-                                radius: 100
-                            });
-                            
-                            showAlert('Map loaded with your location!', 'success');
-                            document.getElementById('status').textContent = 'Map ready - showing your location';
-                        }, function(error) {
-                            console.warn('Geolocation error:', error);
-                            showAlert('Could not get your location. Using default location.', 'warning');
-                            document.getElementById('status').textContent = 'Map ready - using default location (LA)';
-                        });
-                    } else {
-                        showAlert('Geolocation not supported. Using default location.', 'warning');
-                        document.getElementById('status').textContent = 'Map ready - using default location (LA)';
-                    }
-                    
-                } catch (error) {
-                    console.error('Error creating map:', error);
-                    showAlert('Failed to create map: ' + error.message, 'error');
-                    document.getElementById('status').textContent = 'Map creation failed';
-                }
-            }, 100); // Small delay to ensure DOM is ready
-        };
-
-        function fetchSheetsData() {
-            if (!appConfig.sheetId) {
-                showAlert('No Sheet ID configured', 'error');
-                return;
-            }
-            
-            const csvUrl = 'https://docs.google.com/spreadsheets/d/' + appConfig.sheetId + '/export?format=csv';
-            
-            fetch(csvUrl)
-                .then(function(response) {
-                    if (!response.ok) {
-                        throw new Error('HTTP error! status: ' + response.status);
-                    }
-                    return response.text();
-                })
-                .then(function(csvText) {
-                    console.log('CSV data received');
-                    
-                    const lines = csvText.trim().split('\n');
-                    if (lines.length < 2) {
-                        throw new Error('Sheet appears to be empty or has no data rows');
-                    }
-                    
-                    sheetsData = [];
-                    
-                    for (let i = 1; i < lines.length; i++) {
-                        const values = parseCSVLine(lines[i]);
-                        
-                        if (values.length >= 2) {
-                            const name = (values[0] || 'Location ' + i).trim();
-                            const address = (values[1] || '').trim();
-                            const count = parseInt(values[2]) || 0;
-                            
-                            if (address && address.length >= 5) {
-                                sheetsData.push({
-                                    name: name,
-                                    address: address,
-                                    count: count,
-                                    distance: 0
-                                });
-                            }
-                        }
-                    }
-                    
-                    document.getElementById('status').textContent = 'Loaded ' + sheetsData.length + ' locations';
-                    showAlert('Successfully loaded ' + sheetsData.length + ' locations from Google Sheets!', 'success');
-                })
-                .catch(function(error) {
-                    console.error('Error fetching sheets data:', error);
-                    showAlert('Failed to fetch data: ' + error.message, 'error');
-                    document.getElementById('status').textContent = 'Failed to load data';
-                });
-        }
-
-        function parseCSVLine(line) {
-            const result = [];
-            let current = '';
-            let inQuotes = false;
-            
-            for (let i = 0; i < line.length; i++) {
-                const char = line[i];
-                if (char === '"') {
-                    inQuotes = !inQuotes;
-                } else if (char === ',' && !inQuotes) {
-                    result.push(current.trim());
-                    current = '';
-                } else {
-                    current += char;
-                }
-            }
-            
-            result.push(current.trim());
-            return result.map(function(field) {
-                return field.replace(/^"|"$/g, '');
-            });
-        }
-
-        function refreshData() {
-            if (isDemoMode) {
-                showAlert('Demo data refreshed!', 'success');
-                return;
-            }
-            
-            if (!appConfig.sheetId) {
-                showAlert('Configure settings first', 'warning');
-                return;
-            }
-            
-            showAlert('Refreshing data from Google Sheets...', 'info');
-            fetchSheetsData();
-        }
-
         function showAlert(msg, type) {
             const alert = document.getElementById('alert');
             alert.textContent = msg;
@@ -519,29 +296,24 @@
                 setupForm.classList.remove('hidden');
                 mainPanel.classList.add('hidden');
                 demoData.classList.add('hidden');
-                document.getElementById('status').textContent = 'Settings panel open';
             } else {
                 setupForm.classList.add('hidden');
                 mainPanel.classList.remove('hidden');
                 demoData.classList.add('hidden');
-                document.getElementById('status').textContent = 'Ready to initialize';
-                
-                // Ensure map is visible when returning to main panel
-                const mapElement = document.getElementById('map');
-                if (mapElement) {
-                    mapElement.style.display = 'flex';
-                    mapElement.style.visibility = 'visible';
-                }
             }
         }
 
         function toggleDemo() {
             isDemoMode = !isDemoMode;
-            document.getElementById('demoData').classList.toggle('hidden', !isDemoMode);
-            document.getElementById('mainPanel').classList.toggle('hidden', isDemoMode);
-            document.getElementById('setupForm').classList.add('hidden');
+            const demoData = document.getElementById('demoData');
+            const mainPanel = document.getElementById('mainPanel');
+            const setupForm = document.getElementById('setupForm');
+            
             if (isDemoMode) {
-                document.getElementById('qrBtn').disabled = false;
+                demoData.classList.remove('hidden');
+                mainPanel.classList.add('hidden');
+                setupForm.classList.add('hidden');
+                enableButtons();
                 showAlert('Demo mode activated!', 'info');
             }
         }
@@ -564,81 +336,160 @@
 
             appConfig = { apiKey: apiKey, sheetId: sheetId };
             localStorage.setItem('dwConfig', JSON.stringify(appConfig));
-            showAlert('Configuration saved successfully!', 'success');
+            showAlert('Configuration saved!', 'success');
             showSetup(false);
             enableButtons();
         }
 
         function testConnection() {
-            const apiKey = document.getElementById('apiKey').value.trim();
             const sheetId = document.getElementById('sheetId').value.trim();
-            
             if (!sheetId) {
                 showAlert('Please enter Sheet ID first', 'error');
                 return;
             }
 
-            showAlert('Testing Google Sheets connection...', 'info');
+            showAlert('Testing connection...', 'info');
             const csvUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/export?format=csv';
             
             fetch(csvUrl)
                 .then(function(response) {
-                    console.log('Response status:', response.status);
-                    if (!response.ok) {
-                        throw new Error('HTTP ' + response.status + ' - Failed to access sheet. Make sure it\'s published to web.');
-                    }
+                    if (!response.ok) throw new Error('Failed to access sheet');
                     return response.text();
                 })
                 .then(function(csv) {
-                    console.log('CSV received, length:', csv.length);
-                    
-                    if (csv.includes('<!DOCTYPE html>')) {
-                        throw new Error('Sheet returned HTML instead of CSV. Make sure it\'s published as CSV format.');
-                    }
-                    
-                    const lines = csv.trim().split('\n');
-                    if (lines.length < 2) {
-                        throw new Error('Sheet appears empty or has no data rows.');
-                    }
-                    
-                    // Show preview of data
-                    const headers = lines[0];
-                    const sampleRow = lines[1] || '';
-                    
-                    showAlert('✅ Connection successful! Found ' + (lines.length - 1) + ' data rows. Headers: ' + headers, 'success');
-                    
-                    // Also test API key if provided
-                    if (apiKey && apiKey.length > 20) {
-                        testGoogleMapsAPI(apiKey);
-                    }
+                    const lines = csv.split('\n').length - 1;
+                    showAlert('✅ Success! Found ' + lines + ' data rows.', 'success');
                 })
-                .catch(function(error) {
-                    console.error('Test connection error:', error);
-                    showAlert('❌ Connection failed: ' + error.message, 'error');
+                .catch(function() {
+                    showAlert('❌ Failed. Check Sheet ID and ensure sheet is published.', 'error');
                 });
         }
 
-        function testGoogleMapsAPI(apiKey) {
-            // Test Google Maps API with a simple geocoding request
-            const testUrl = 'https://maps.googleapis.com/maps/api/geocode/json?address=1600+Amphitheatre+Parkway,+Mountain+View,+CA&key=' + apiKey;
+        function enableButtons() {
+            document.getElementById('qrBtn').disabled = false;
+            document.getElementById('refreshBtn').disabled = false;
+            document.getElementById('initBtn').textContent = '✅ Re-initialize';
+        }
+
+        function initializeApp() {
+            if (!appConfig.apiKey || !appConfig.sheetId) {
+                showAlert('Please configure your settings first', 'warning');
+                return;
+            }
             
-            fetch(testUrl)
+            showAlert('Initializing app...', 'info');
+            document.getElementById('status').textContent = 'Initializing...';
+            
+            loadGoogleMaps();
+            fetchSheetsData();
+            enableButtons();
+        }
+
+        function loadGoogleMaps() {
+            console.log('Loading Google Maps...');
+            
+            const existingScripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
+            existingScripts.forEach(function(script) { script.remove(); });
+            
+            const script = document.createElement('script');
+            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initGoogleMap&loading=async';
+            script.async = true;
+            script.defer = true;
+            script.onerror = function() {
+                showAlert('Failed to load Google Maps', 'error');
+            };
+            
+            document.head.appendChild(script);
+        }
+
+        window.initGoogleMap = function() {
+            console.log('initGoogleMap called');
+            
+            const mapDiv = document.getElementById('mapDiv');
+            const placeholder = document.getElementById('mapPlaceholder');
+            
+            console.log('Map div element:', mapDiv);
+            console.log('Map div exists:', !!mapDiv);
+            
+            if (!mapDiv) {
+                console.error('mapDiv element not found!');
+                showAlert('Map container not found', 'error');
+                return;
+            }
+            
+            if (placeholder) {
+                placeholder.style.display = 'none';
+            }
+            
+            try {
+                map = new google.maps.Map(mapDiv, {
+                    zoom: 10,
+                    center: { lat: 34.0522, lng: -118.2437 },
+                    mapTypeId: 'roadmap'
+                });
+                
+                console.log('Map created successfully');
+                showAlert('Map loaded successfully!', 'success');
+                document.getElementById('status').textContent = 'Map ready';
+                
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(function(position) {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        map.setCenter(userLocation);
+                        map.setZoom(12);
+                        
+                        new google.maps.Circle({
+                            strokeColor: '#4285f4',
+                            strokeOpacity: 0.8,
+                            strokeWeight: 3,
+                            fillColor: '#4285f4',
+                            fillOpacity: 0.8,
+                            map: map,
+                            center: userLocation,
+                            radius: 100
+                        });
+                        
+                        showAlert('Map loaded with your location!', 'success');
+                    });
+                }
+                
+            } catch (error) {
+                console.error('Error creating map:', error);
+                showAlert('Failed to create map: ' + error.message, 'error');
+            }
+        };
+
+        function fetchSheetsData() {
+            const csvUrl = 'https://docs.google.com/spreadsheets/d/' + appConfig.sheetId + '/export?format=csv';
+            
+            fetch(csvUrl)
                 .then(function(response) {
-                    return response.json();
+                    if (!response.ok) throw new Error('Failed to fetch data');
+                    return response.text();
                 })
-                .then(function(data) {
-                    if (data.status === 'REQUEST_DENIED') {
-                        throw new Error('Google Maps API key is invalid or restricted.');
-                    } else if (data.status === 'OVER_QUERY_LIMIT') {
-                        throw new Error('Google Maps API quota exceeded.');
-                    } else if (data.error_message) {
-                        throw new Error('Google Maps API error: ' + data.error_message);
-                    } else {
-                        showAlert('✅ Google Maps API key is working correctly!', 'success');
+                .then(function(csvText) {
+                    const lines = csvText.trim().split('\n');
+                    sheetsData = [];
+                    
+                    for (let i = 1; i < lines.length; i++) {
+                        const values = lines[i].split(',').map(function(v) { return v.replace(/"/g, '').trim(); });
+                        if (values.length >= 2) {
+                            sheetsData.push({
+                                name: values[0] || 'Location ' + i,
+                                address: values[1] || '',
+                                count: parseInt(values[2]) || 0
+                            });
+                        }
                     }
+                    
+                    showAlert('Loaded ' + sheetsData.length + ' locations!', 'success');
+                    document.getElementById('status').textContent = 'Ready with ' + sheetsData.length + ' locations';
                 })
                 .catch(function(error) {
-                    showAlert('⚠️ Google Maps API test failed: ' + error.message, 'warning');
+                    showAlert('Failed to load data: ' + error.message, 'error');
                 });
         }
 
@@ -648,67 +499,31 @@
                 return;
             }
             
-            if (!sheetsData || sheetsData.length === 0) {
-                const url = 'https://maps.google.com/maps?q=stores+near+me';
-                showQRModal('📱 Sample QR Code', url, 'No location data loaded yet. Please initialize the app first to load your real data.');
-                showAlert('Sample QR generated. Initialize the app to load real data.', 'warning');
-                return;
-            }
+            const url = sheetsData.length > 0 ? 
+                'https://maps.google.com/maps?q=' + encodeURIComponent(sheetsData[0].address) :
+                'https://maps.google.com/maps?q=stores+near+me';
             
-            // Get selected range
-            const rangeValue = document.getElementById('rangeSelector').value;
-            
-            // Create URL based on your actual data
-            let url;
-            if (sheetsData.length === 1) {
-                // Single location
-                url = 'https://maps.google.com/maps?q=' + encodeURIComponent(sheetsData[0].address);
-            } else {
-                // Multiple locations - use first few
-                const locations = sheetsData.slice(0, 3);
-                const searchTerms = locations.map(function(loc) { return encodeURIComponent(loc.name + ' ' + loc.address); });
-                url = 'https://maps.google.com/maps?q=' + searchTerms.join('+OR+');
-            }
-            
-            const title = '📱 ' + (rangeValue === 'all' ? 'All' : rangeValue + ' Mile') + ' Range QR Code';
-            const desc = 'QR code for ' + sheetsData.length + ' location' + (sheetsData.length > 1 ? 's' : '') + ' from your Google Sheets data.';
-            
-            showQRModal(title, url, desc);
+            showQRModal('📱 Location QR', url, 'QR code for your locations');
         }
 
         function generateDemoQR() {
-            showQRModal('📱 Demo QR Code', 'https://maps.google.com/maps?q=34.0522,-118.2437', 'Downtown LA demo location - scan with your phone camera');
+            showQRModal('📱 Demo QR', 'https://maps.google.com/maps?q=34.0522,-118.2437', 'Downtown LA demo location');
         }
 
         function showQRModal(title, url, desc) {
             document.getElementById('qrTitle').textContent = title;
-            document.getElementById('qrDesc').innerHTML = '<p style="color: #666;">' + desc + '</p><a href="' + url + '" target="_blank" class="btn btn-secondary" style="margin-top: 10px;">📍 Open in Google Maps</a>';
+            document.getElementById('qrDesc').innerHTML = '<p>' + desc + '</p><a href="' + url + '" target="_blank" class="btn btn-secondary">Open in Maps</a>';
             
             const qrDiv = document.getElementById('qrCode');
             qrDiv.innerHTML = '';
             
             if (typeof QRCode !== 'undefined') {
-                try {
-                    new QRCode(qrDiv, {
-                        text: url,
-                        width: 256,
-                        height: 256,
-                        colorDark: '#000000',
-                        colorLight: '#ffffff',
-                        correctLevel: QRCode.CorrectLevel.L
-                    });
-                    
-                    setTimeout(function() {
-                        const tips = document.createElement('div');
-                        tips.style.cssText = 'margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; font-size: 14px; color: #333;';
-                        tips.innerHTML = '<strong>📱 Scanning Tips:</strong><br>• Open your phone camera app<br>• Point at QR code 8-12 inches away<br>• Tap notification to open Google Maps';
-                        qrDiv.appendChild(tips);
-                    }, 100);
-                } catch (error) {
-                    qrDiv.innerHTML = '<p style="color: red;">Error generating QR code</p>';
-                }
-            } else {
-                qrDiv.innerHTML = '<p style="color: red;">QR Code library not loaded</p>';
+                new QRCode(qrDiv, {
+                    text: url,
+                    width: 256,
+                    height: 256,
+                    correctLevel: QRCode.CorrectLevel.L
+                });
             }
             
             document.getElementById('qrModal').style.display = 'flex';
@@ -716,6 +531,18 @@
 
         function closeQR() {
             document.getElementById('qrModal').style.display = 'none';
+        }
+
+        function refreshData() {
+            if (isDemoMode) {
+                showAlert('Demo refreshed!', 'success');
+                return;
+            }
+            
+            if (appConfig.sheetId) {
+                showAlert('Refreshing data...', 'info');
+                fetchSheetsData();
+            }
         }
 
         window.generateDemoQR = generateDemoQR;
