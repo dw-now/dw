@@ -385,66 +385,62 @@
             enableButtons();
         }
 
+        let isGoogleMapsLoaded = false;
+        let isGoogleMapsLoading = false;
+
         function loadGoogleMaps() {
-            console.log('Loading Google Maps...');
+            console.log('loadGoogleMaps called');
             
-            // Remove ALL existing Google Maps scripts and clear the global
-            const existingScripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
-            existingScripts.forEach(function(script) { 
-                console.log('Removing existing script:', script.src);
-                script.remove(); 
-            });
-            
-            // Clear any existing Google Maps global object
-            if (window.google) {
-                console.log('Clearing existing Google Maps global object');
-                delete window.google;
+            // Prevent multiple loads
+            if (isGoogleMapsLoaded) {
+                console.log('Google Maps already loaded, calling initGoogleMap directly');
+                initGoogleMap();
+                return;
             }
             
-            // Clear any existing callback functions
-            if (window.initMap) {
-                delete window.initMap;
-            }
-            if (window.initGoogleMap) {
-                delete window.initGoogleMap;
+            if (isGoogleMapsLoading) {
+                console.log('Google Maps already loading, please wait...');
+                return;
             }
             
-            // Wait a moment for cleanup, then load new script
-            setTimeout(function() {
-                console.log('Loading fresh Google Maps script...');
-                
-                const script = document.createElement('script');
-                script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initGoogleMap&loading=async&v=3.55';
-                script.async = true;
-                script.defer = true;
-                script.id = 'google-maps-script';
-                script.onerror = function() {
-                    console.error('Failed to load Google Maps script');
-                    showAlert('Failed to load Google Maps. Check your API key.', 'error');
-                };
-                script.onload = function() {
-                    console.log('Google Maps script loaded successfully');
-                };
-                
-                document.head.appendChild(script);
-            }, 500);
+            isGoogleMapsLoading = true;
+            console.log('Loading Google Maps for the first time...');
+            
+            // Only remove scripts if they exist
+            const existingScript = document.getElementById('google-maps-script');
+            if (existingScript) {
+                console.log('Removing existing Google Maps script');
+                existingScript.remove();
+            }
+            
+            const script = document.createElement('script');
+            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initGoogleMap&loading=async&v=3.55';
+            script.async = true;
+            script.defer = true;
+            script.id = 'google-maps-script';
+            script.onerror = function() {
+                console.error('Failed to load Google Maps script');
+                isGoogleMapsLoading = false;
+                showAlert('Failed to load Google Maps. Check your API key.', 'error');
+            };
+            script.onload = function() {
+                console.log('Google Maps script loaded successfully');
+                isGoogleMapsLoaded = true;
+                isGoogleMapsLoading = false;
+            };
+            
+            document.head.appendChild(script);
         }
         
         // Define the callback function BEFORE loading the script
         window.initGoogleMap = function() {
             console.log('=== initGoogleMap called ===');
-            console.log('Looking for map element with ID: mapDiv');
             
             const mapDiv = document.getElementById('mapDiv');
             const placeholder = document.getElementById('mapPlaceholder');
             
-            console.log('Map div element:', mapDiv);
-            console.log('Map div exists:', !!mapDiv);
-            console.log('All divs in document:', document.querySelectorAll('div'));
-            
             if (!mapDiv) {
                 console.error('ERROR: mapDiv element not found!');
-                console.log('Available elements with IDs:', Array.from(document.querySelectorAll('[id]')).map(el => el.id));
                 showAlert('Map container not found. Please refresh the page.', 'error');
                 return;
             }
@@ -466,10 +462,19 @@
                     mapTypeId: 'roadmap'
                 });
                 
-                console.log('✅ Map created successfully:', map);
+                console.log('✅ Map created successfully');
                 showAlert('Map loaded successfully!', 'success');
                 document.getElementById('status').textContent = 'Map ready';
                 
+                // Add locations to map if they exist
+                if (sheetsData && sheetsData.length > 0) {
+                    console.log('Adding', sheetsData.length, 'locations to map');
+                    addLocationsToMap();
+                } else {
+                    console.log('No locations data available yet');
+                }
+                
+                // Get user location
                 if (navigator.geolocation) {
                     navigator.geolocation.getCurrentPosition(function(position) {
                         userLocation = {
@@ -493,6 +498,11 @@
                         
                         showAlert('Map loaded with your location!', 'success');
                         document.getElementById('status').textContent = 'Map ready - showing your location';
+                        
+                        // Re-add locations after getting user location
+                        if (sheetsData && sheetsData.length > 0) {
+                            addLocationsToMap();
+                        }
                     }, function(error) {
                         console.log('Geolocation failed:', error);
                         showAlert('Using default location', 'info');
@@ -505,7 +515,91 @@
             }
         };
 
+        function addLocationsToMap() {
+            if (!map || !sheetsData || sheetsData.length === 0) {
+                console.log('Cannot add locations: map or data not available');
+                return;
+            }
+            
+            console.log('Adding locations to map:', sheetsData);
+            
+            // Use Google Maps Geocoding to convert addresses to coordinates
+            const geocoder = new google.maps.Geocoder();
+            const bounds = new google.maps.LatLngBounds();
+            let processedCount = 0;
+            
+            sheetsData.forEach(function(location, index) {
+                if (!location.address) {
+                    console.warn('No address for location:', location.name);
+                    return;
+                }
+                
+                console.log('Geocoding:', location.name, '-', location.address);
+                
+                geocoder.geocode({ address: location.address }, function(results, status) {
+                    processedCount++;
+                    
+                    if (status === 'OK' && results[0]) {
+                        const position = results[0].geometry.location;
+                        console.log('✅ Geocoded', location.name, 'to', position.toString());
+                        
+                        // Create marker
+                        const marker = new google.maps.Circle({
+                            strokeColor: location.count > 0 ? '#4CAF50' : '#999',
+                            strokeOpacity: 0.8,
+                            strokeWeight: 2,
+                            fillColor: location.count > 0 ? '#4CAF50' : '#999',
+                            fillOpacity: 0.35,
+                            map: map,
+                            center: position,
+                            radius: 200
+                        });
+                        
+                        // Create info window
+                        const infoWindow = new google.maps.InfoWindow({
+                            content: '<div style="padding: 10px;">' +
+                                '<h3 style="margin: 0 0 10px 0;">' + location.name + '</h3>' +
+                                '<p><strong>Address:</strong> ' + location.address + '</p>' +
+                                '<p><strong>Available:</strong> ' + location.count + '</p>' +
+                                '</div>'
+                        });
+                        
+                        // Add click listener
+                        marker.addListener('click', function() {
+                            infoWindow.open(map, marker);
+                        });
+                        
+                        bounds.extend(position);
+                        
+                        // If this is the last location, fit bounds
+                        if (processedCount === sheetsData.length) {
+                            console.log('All locations processed, fitting bounds');
+                            if (userLocation) {
+                                bounds.extend(userLocation);
+                            }
+                            map.fitBounds(bounds);
+                            
+                            // Prevent zooming in too much
+                            google.maps.event.addListenerOnce(map, 'bounds_changed', function() {
+                                if (map.getZoom() > 15) {
+                                    map.setZoom(15);
+                                }
+                            });
+                        }
+                        
+                    } else {
+                        console.warn('❌ Geocoding failed for', location.name, ':', status);
+                    }
+                });
+            });
+            
+            if (sheetsData.length > 0) {
+                showAlert('Adding ' + sheetsData.length + ' locations to map...', 'info');
+            }
+        }
+
         function fetchSheetsData() {
+            console.log('Fetching sheets data...');
             const csvUrl = 'https://docs.google.com/spreadsheets/d/' + appConfig.sheetId + '/export?format=csv';
             
             fetch(csvUrl)
@@ -514,24 +608,41 @@
                     return response.text();
                 })
                 .then(function(csvText) {
+                    console.log('CSV data received, processing...');
                     const lines = csvText.trim().split('\n');
                     sheetsData = [];
                     
+                    // Skip header row
                     for (let i = 1; i < lines.length; i++) {
-                        const values = lines[i].split(',').map(function(v) { return v.replace(/"/g, '').trim(); });
-                        if (values.length >= 2) {
-                            sheetsData.push({
-                                name: values[0] || 'Location ' + i,
-                                address: values[1] || '',
+                        const values = lines[i].split(',').map(function(v) { 
+                            return v.replace(/"/g, '').trim(); 
+                        });
+                        
+                        if (values.length >= 2 && values[0] && values[1]) {
+                            const location = {
+                                name: values[0],
+                                address: values[1],
                                 count: parseInt(values[2]) || 0
-                            });
+                            };
+                            sheetsData.push(location);
+                            console.log('Added location:', location);
                         }
                     }
                     
-                    showAlert('Loaded ' + sheetsData.length + ' locations!', 'success');
+                    console.log('Total locations loaded:', sheetsData.length);
+                    showAlert('Loaded ' + sheetsData.length + ' locations from your sheet!', 'success');
                     document.getElementById('status').textContent = 'Ready with ' + sheetsData.length + ' locations';
+                    
+                    // If map is already loaded, add the locations
+                    if (map) {
+                        console.log('Map exists, adding locations now');
+                        addLocationsToMap();
+                    } else {
+                        console.log('Map not ready yet, locations will be added when map loads');
+                    }
                 })
                 .catch(function(error) {
+                    console.error('Error fetching sheets data:', error);
                     showAlert('Failed to load data: ' + error.message, 'error');
                 });
         }
