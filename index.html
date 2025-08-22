@@ -3,889 +3,366 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DW Location Tracker - v2.1 with Sheets Integration</title>
+    <title>DW Location Tracker</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            font-family: Arial, sans-serif; 
+            background: linear-gradient(135deg, #667eea, #764ba2); 
+            min-height: 100vh; 
+            color: white; 
+            padding: 20px;
         }
-        
-        :root {
-            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            --success-color: #4CAF50;
-            --warning-color: #FF9800;
-            --danger-color: #f44336;
-            --info-color: #2196F3;
-            --glass-bg: rgba(255, 255, 255, 0.1);
-            --glass-border: rgba(255, 255, 255, 0.2);
+        .header { text-align: center; margin-bottom: 30px; }
+        .panel { 
+            background: rgba(255,255,255,0.1); 
+            padding: 20px; 
+            border-radius: 10px; 
+            margin-bottom: 20px; 
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
         }
-        
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: var(--primary-gradient);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            position: relative;
+        .btn { 
+            background: #4CAF50; 
+            color: white; 
+            border: none; 
+            padding: 12px 24px; 
+            border-radius: 6px; 
+            cursor: pointer; 
+            margin: 8px; 
+            font-size: 14px;
         }
-        
-        body.dark-mode {
-            --primary-gradient: linear-gradient(135deg, #1a1a2e 0%, #0f0f1e 100%);
-            --glass-bg: rgba(255, 255, 255, 0.05);
-            --glass-border: rgba(255, 255, 255, 0.1);
+        .btn:hover { background: #45a049; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .btn-secondary { background: #2196F3; }
+        .btn-danger { background: #f44336; }
+        input { 
+            width: 100%; 
+            padding: 12px; 
+            margin: 8px 0; 
+            border: 1px solid #ddd; 
+            border-radius: 6px; 
+            font-size: 14px;
         }
-        
-        .header {
-            background: var(--glass-bg);
-            backdrop-filter: blur(10px);
-            padding: 1rem;
-            text-align: center;
-            color: white;
-            border-bottom: 1px solid var(--glass-border);
-            position: relative;
+        .hidden { display: none; }
+        .alert { 
+            padding: 15px; 
+            margin: 15px 0; 
+            border-radius: 6px; 
+            display: none; 
         }
-        
-        .header h1 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
+        .alert.success { background: rgba(76,175,80,0.2); border: 1px solid #4CAF50; }
+        .alert.error { background: rgba(244,67,54,0.2); border: 1px solid #f44336; }
+        .alert.warning { background: rgba(255,152,0,0.2); border: 1px solid #FF9800; }
+        .alert.info { background: rgba(33,150,243,0.2); border: 1px solid #2196F3; }
+        .setup-form { 
+            background: rgba(255,255,255,0.95); 
+            color: #333; 
+            padding: 25px; 
+            border-radius: 10px; 
+            max-width: 600px;
+            margin: 0 auto;
         }
-        
-        .status {
-            font-size: 0.9rem;
-            opacity: 0.9;
+        .demo-data { 
+            background: rgba(255,255,255,0.95); 
+            color: #333; 
+            padding: 25px; 
+            border-radius: 10px; 
+            max-width: 600px;
+            margin: 0 auto;
         }
-        
-        .theme-toggle {
-            position: absolute;
-            top: 1rem;
-            right: 1rem;
-            background: rgba(255, 255, 255, 0.2);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            color: white;
-            padding: 0.5rem 1rem;
-            border-radius: 20px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-        }
-        
-        .theme-toggle:hover {
-            background: rgba(255, 255, 255, 0.3);
-        }
-        
-        .config-panel {
-            background: var(--glass-bg);
-            backdrop-filter: blur(10px);
-            padding: 1rem;
-            margin: 1rem;
-            border-radius: 12px;
-            border: 1px solid var(--glass-border);
-            animation: slideIn 0.5s ease;
-        }
-        
-        @keyframes slideIn {
-            from {
-                transform: translateY(-20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        
-        .config-panel h3 {
-            color: white;
-            margin-bottom: 1rem;
-        }
-        
-        .input-group {
-            margin-bottom: 1rem;
-        }
-        
-        .input-group label {
-            display: block;
-            color: white;
-            margin-bottom: 0.5rem;
-            font-weight: 500;
-        }
-        
-        .input-group input,
-        .input-group select {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.1);
-            color: white;
-            font-size: 1rem;
-            transition: all 0.3s ease;
-        }
-        
-        .input-group input::placeholder {
-            color: rgba(255, 255, 255, 0.7);
-        }
-        
-        .input-group input:focus,
-        .input-group select:focus {
-            outline: none;
-            border-color: var(--success-color);
-            box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
-        }
-        
-        .btn {
-            background: linear-gradient(45deg, var(--success-color), #45a049);
-            color: white;
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 500;
-            transition: all 0.3s ease;
-            margin-right: 0.5rem;
-            margin-bottom: 0.5rem;
-            position: relative;
-            overflow: hidden;
-        }
-        
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.4);
-        }
-        
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-        
-        .btn-secondary {
-            background: linear-gradient(45deg, var(--info-color), #1976D2);
-        }
-        
-        .btn-secondary:hover {
-            box-shadow: 0 4px 12px rgba(33, 150, 243, 0.4);
-        }
-        
-        .btn-danger {
-            background: linear-gradient(45deg, var(--danger-color), #d32f2f);
-        }
-        
-        .btn-warning {
-            background: linear-gradient(45deg, var(--warning-color), #f57c00);
-        }
-        
-        .map-container {
-            flex: 1;
-            margin: 1rem;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-            min-height: 500px;
-            position: relative;
-            background: rgba(255, 255, 255, 0.1);
-            display: flex;
+        .demo-location { 
+            display: flex; 
+            justify-content: space-between; 
             align-items: center;
-            justify-content: center;
+            padding: 12px; 
+            margin: 8px 0; 
+            background: #f8f9fa; 
+            border-radius: 6px; 
+            border: 1px solid #dee2e6;
         }
-        
-        #map {
-            width: 100%;
-            height: 100%;
-            min-height: 500px;
+        .location-count { 
+            background: #4CAF50; 
+            color: white; 
+            padding: 6px 12px; 
+            border-radius: 4px; 
+            font-weight: bold;
         }
-        
-        .map-placeholder {
-            color: white;
-            text-align: center;
-            font-size: 1.2rem;
-            opacity: 0.7;
+        .location-count.zero { background: #999; }
+        .qr-modal { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100%; 
+            height: 100%; 
+            background: rgba(0,0,0,0.8); 
+            display: none; 
+            align-items: center; 
+            justify-content: center; 
+            z-index: 1000; 
         }
-        
-        .alert {
-            background: rgba(255, 152, 0, 0.1);
-            border: 1px solid rgba(255, 152, 0, 0.3);
-            color: var(--warning-color);
-            padding: 1rem;
-            border-radius: 8px;
-            margin: 1rem;
-            animation: slideDown 0.3s ease;
-        }
-        
-        @keyframes slideDown {
-            from {
-                transform: translateY(-10px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        
-        .alert.success {
-            background: rgba(76, 175, 80, 0.1);
-            border-color: rgba(76, 175, 80, 0.3);
-            color: var(--success-color);
-        }
-        
-        .alert.error {
-            background: rgba(244, 67, 54, 0.1);
-            border-color: rgba(244, 67, 54, 0.3);
-            color: var(--danger-color);
-        }
-        
-        .alert.info {
-            background: rgba(33, 150, 243, 0.1);
-            border-color: rgba(33, 150, 243, 0.3);
-            color: var(--info-color);
-        }
-        
-        .setup-form {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 2rem;
-            border-radius: 12px;
-            margin: 1rem;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            display: none;
-        }
-        
-        .setup-form.active {
-            display: block;
-            animation: slideIn 0.5s ease;
-        }
-        
-        .setup-form h3 {
-            margin-bottom: 1.5rem;
-            color: #333;
-        }
-        
-        .setup-form input,
-        .setup-form select {
-            background: white;
-            border: 2px solid #ddd;
-            color: #333;
-        }
-        
-        .setup-form input:focus,
-        .setup-form select:focus {
-            border-color: var(--success-color);
-        }
-        
-        .quick-start {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            border-left: 4px solid var(--success-color);
-        }
-        
-        .quick-start h4 {
-            color: white;
-            margin-bottom: 0.5rem;
-        }
-        
-        .quick-start p {
-            color: rgba(255, 255, 255, 0.9);
-            font-size: 0.9rem;
-            line-height: 1.4;
-        }
-        
-        .live-indicator {
-            display: inline-block;
-            width: 8px;
-            height: 8px;
-            background: var(--success-color);
-            border-radius: 50%;
-            animation: pulse 2s infinite;
-            margin-left: 0.5rem;
-        }
-        
-        @keyframes pulse {
-            0% {
-                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
-            }
-            70% {
-                box-shadow: 0 0 0 10px rgba(76, 175, 80, 0);
-            }
-            100% {
-                box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
-            }
-        }
-        
-        .demo-data {
-            background: rgba(255, 255, 255, 0.95);
-            padding: 1.5rem;
-            border-radius: 12px;
-            margin: 1rem;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-            display: none;
-        }
-        
-        .demo-data.active {
-            display: block;
-            animation: slideIn 0.5s ease;
-        }
-        
-        .demo-location {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 0.75rem;
-            border-radius: 8px;
-            background: white;
-            margin-bottom: 0.5rem;
-            border: 2px solid transparent;
-            transition: all 0.3s ease;
-        }
-        
-        .demo-location:hover {
-            border-color: var(--info-color);
-            transform: translateX(5px);
-        }
-        
-        .location-name {
-            font-weight: 500;
-            color: #333;
-        }
-        
-        .location-count {
-            background: var(--success-color);
-            color: white;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            min-width: 30px;
-            text-align: center;
-        }
-        
-        .location-count.zero {
-            background: #999;
-        }
-        
-        .location-count.low {
-            background: var(--warning-color);
-        }
-        
-        .qr-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.7);
-            display: none;
-            align-items: center;
-            justify-content: center;
-            z-index: 1000;
-        }
-        
-        .qr-modal.active {
-            display: flex;
-        }
-        
-        .qr-content {
-            background: white;
-            padding: 2rem;
-            border-radius: 12px;
-            text-align: center;
+        .qr-content { 
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            text-align: center; 
+            color: #333; 
             max-width: 90%;
             max-height: 90%;
-            overflow-y: auto;
-        }
-        
-        .instruction-box {
-            background: #e3f2fd;
-            border: 1px solid #2196F3;
-            border-radius: 8px;
-            padding: 1rem;
-            margin: 1rem 0;
-            text-align: left;
-        }
-        
-        .instruction-box h4 {
-            color: #1976d2;
-            margin-bottom: 0.5rem;
-        }
-        
-        .instruction-box ol {
-            margin: 0;
-            padding-left: 1.5rem;
-            color: #555;
-        }
-        
-        .instruction-box li {
-            margin-bottom: 0.25rem;
-        }
-        
-        @media (max-width: 768px) {
-            .config-panel, .setup-form {
-                margin: 0.5rem;
-            }
-            
-            .map-container {
-                margin: 0.5rem;
-                min-height: 400px;
-            }
-            
-            .theme-toggle {
-                position: static;
-                margin-top: 1rem;
-            }
         }
     </style>
 </head>
 <body>
     <div class="header">
-        <button class="theme-toggle" id="themeToggle">🌙 Dark</button>
-        <h1>🗺️ DW Location Tracker v2.1 <span class="live-indicator"></span></h1>
-        <div class="status" id="status">Ready to configure</div>
+        <h1>🗺️ DW Location Tracker</h1>
+        <div id="status">Ready to configure</div>
     </div>
 
-    <div class="config-panel" id="mainPanel">
-        <div class="quick-start">
-            <h4>🚀 Quick Start Guide</h4>
-            <p>This version integrates with Google Sheets API to fetch your location data in real-time! Click "Demo Mode" to see it in action, or "Settings" to configure your data sources.</p>
-        </div>
-        
-        <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-            <button class="btn" id="initBtn">🚀 Initialize App</button>
+    <div class="panel" id="mainPanel">
+        <p style="margin-bottom: 20px; text-align: center;">
+            Welcome! Click <strong>Demo Mode</strong> to test the app or <strong>Settings</strong> to configure your Google Sheets data.
+        </p>
+        <div style="text-align: center;">
             <button class="btn" id="demoBtn">🎮 Demo Mode</button>
             <button class="btn btn-danger" id="setupBtn">⚙️ Settings</button>
             <button class="btn btn-secondary" id="qrBtn" disabled>📱 Generate QR</button>
-            <button class="btn btn-secondary" id="refreshBtn" disabled>🔄 Refresh</button>
-            <button class="btn btn-warning" id="exportBtn" disabled>📥 Export Data</button>
-        </div>
-        
-        <div class="input-group" style="margin-top: 1rem;">
-            <label for="rangeSelector">QR Code Range:</label>
-            <select id="rangeSelector">
-                <option value="1">1 Mile</option>
-                <option value="2">2 Miles</option>
-                <option value="3" selected>3 Miles</option>
-                <option value="5">5 Miles</option>
-                <option value="10">10 Miles</option>
-                <option value="all">All Locations</option>
-            </select>
         </div>
     </div>
 
-    <div class="setup-form" id="setupForm">
-        <h3>⚙️ Configuration Settings</h3>
-        
-        <div class="instruction-box">
-            <h4>✨ Easiest Method - No API Needed!</h4>
-            <ol>
+    <div class="setup-form hidden" id="setupForm">
+        <h3 style="margin-bottom: 20px;">⚙️ Configuration Settings</h3>
+        <div style="background: #e3f2fd; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
+            <strong>Setup Instructions:</strong>
+            <ol style="margin: 10px 0; padding-left: 20px;">
                 <li>Open your Google Sheet</li>
                 <li>Click <strong>File → Share → Publish to web</strong></li>
-                <li>Select <strong>Entire Document</strong> and <strong>CSV</strong> format</li>
-                <li>Click <strong>Publish</strong> and confirm</li>
-                <li>Enter just your Sheet ID below - no API key needed!</li>
+                <li>Select <strong>CSV</strong> format and click <strong>Publish</strong></li>
+                <li>Enter your details below</li>
             </ol>
         </div>
-        
-        <div class="input-group">
-            <label for="apiKey">Google Maps API Key: <span style="color: red;">*</span></label>
-            <input type="password" id="apiKey" placeholder="Enter your Google Maps API key" required>
-        </div>
-        <div class="input-group">
-            <label for="sheetId">Google Sheets ID: <span style="color: red;">*</span></label>
-            <input type="text" id="sheetId" placeholder="Enter your Google Sheets ID (from the URL)" required>
-            <small style="color: #666;">Find this in: docs.google.com/spreadsheets/d/<strong>[SHEET_ID]</strong>/edit</small>
-        </div>
-        <div class="input-group">
-            <label for="range">Sheet Range:</label>
-            <input type="text" id="range" value="Sheet1!A:C" placeholder="e.g., Sheet1!A:C">
-            <small style="color: #666;">Leave default if your data starts at A1</small>
-        </div>
-        
-        <div style="margin-top: 1.5rem;">
+        <label><strong>Google Maps API Key:</strong></label>
+        <input type="password" id="apiKey" placeholder="Enter your Google Maps API key">
+        <label><strong>Google Sheets ID:</strong></label>
+        <input type="text" id="sheetId" placeholder="Enter Sheet ID from URL">
+        <div style="margin-top: 20px; text-align: center;">
             <button class="btn" id="saveBtn">💾 Save Configuration</button>
             <button class="btn btn-secondary" id="testBtn">🧪 Test Connection</button>
             <button class="btn btn-secondary" id="cancelBtn">❌ Cancel</button>
-            <button class="btn btn-danger" id="clearBtn">🗑️ Clear All Data</button>
         </div>
     </div>
 
-    <div class="map-container">
-        <div id="map">
-            <div class="map-placeholder" id="mapPlaceholder">
-                🗺️ Map will appear here after configuration
-            </div>
-        </div>
-    </div>
-
-    <div class="demo-data" id="demoData">
-        <h3>📍 Demo Locations</h3>
-        <p style="margin-bottom: 1rem; color: #666;">Sample locations showing how the app works:</p>
+    <div class="demo-data hidden" id="demoData">
+        <h3 style="margin-bottom: 20px;">📍 Demo Locations</h3>
+        <p style="margin-bottom: 15px;">Sample locations showing how the app works:</p>
         
         <div class="demo-location">
             <div>
-                <div class="location-name">Downtown Store</div>
-                <div style="color: #666; font-size: 0.9em;">123 Main St, Los Angeles, CA</div>
+                <div style="font-weight: bold;">Downtown Store</div>
+                <div style="color: #666; font-size: 14px;">123 Main St, Los Angeles, CA</div>
             </div>
             <div class="location-count">15</div>
         </div>
         
         <div class="demo-location">
             <div>
-                <div class="location-name">Westside Location</div>
-                <div style="color: #666; font-size: 0.9em;">456 Ocean Ave, Santa Monica, CA</div>
+                <div style="font-weight: bold;">Westside Location</div>
+                <div style="color: #666; font-size: 14px;">456 Ocean Ave, Santa Monica, CA</div>
             </div>
             <div class="location-count">8</div>
         </div>
         
         <div class="demo-location">
             <div>
-                <div class="location-name">Hollywood Branch</div>
-                <div style="color: #666; font-size: 0.9em;">789 Sunset Blvd, Hollywood, CA</div>
+                <div style="font-weight: bold;">Hollywood Branch</div>
+                <div style="color: #666; font-size: 14px;">789 Sunset Blvd, Hollywood, CA</div>
             </div>
             <div class="location-count zero">0</div>
         </div>
         
-        <div class="demo-location">
-            <div>
-                <div class="location-name">Beverly Hills Store</div>
-                <div style="color: #666; font-size: 0.9em;">321 Rodeo Dr, Beverly Hills, CA</div>
-            </div>
-            <div class="location-count low">2</div>
-        </div>
-        
-        <div style="margin-top: 1rem;">
-            <button class="btn btn-secondary" onclick="generateDemoQR()">
-                📱 Generate Demo QR Code
-            </button>
-            <button class="btn" onclick="exitDemoMode()">
-                ✕ Exit Demo Mode
-            </button>
+        <div style="margin-top: 25px; text-align: center;">
+            <button class="btn btn-secondary" onclick="generateDemoQR()">📱 Generate Demo QR</button>
+            <button class="btn" onclick="exitDemo()">✕ Exit Demo Mode</button>
         </div>
     </div>
 
     <div class="qr-modal" id="qrModal">
         <div class="qr-content">
             <h3 id="qrTitle">📱 QR Code</h3>
-            <div id="qrCodeDisplay" style="margin: 20px auto;"></div>
-            <div id="qrDescription"></div>
-            <div style="margin-top: 20px;">
-                <button class="btn btn-secondary" onclick="closeQRModal()">Close</button>
-            </div>
+            <div id="qrCode" style="margin: 20px 0;"></div>
+            <div id="qrDesc" style="margin: 15px 0;"></div>
+            <button class="btn btn-secondary" onclick="closeQR()">Close</button>
         </div>
     </div>
 
-    <div class="alert" id="alertDiv" style="display: none;"></div>
+    <div class="alert" id="alert"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
-        // Global variables
-        let map;
-        let markers = [];
-        let userLocation = null;
-        let sheetsData = [];
         let isDemoMode = false;
-        let isInitialized = false;
+        let appConfig = { apiKey: '', sheetId: '' };
 
-        // App state
-        const appState = {
-            apiKey: '',
-            sheetId: '',
-            range: 'Sheet1!A:C',
-            userId: '',
-            initialized: false
-        };
-
-        // Initialize app when page loads
         document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM loaded, initializing app...');
-            initializeApp();
+            loadConfig();
+            setupEvents();
+            showAlert('Welcome! Click Demo Mode to test or Settings to configure.', 'info');
         });
 
-        // Backup initialization
-        if (document.readyState === 'loading') {
-            // Document still loading, wait for DOMContentLoaded
-        } else {
-            // Document already loaded
-            console.log('Document already loaded, initializing immediately...');
-            setTimeout(initializeApp, 100);
-        }
-
-        // Utility functions
-        function showAlert(message, type) {
-            console.log('Alert (' + type + '): ' + message);
-            const alertDiv = document.getElementById('alertDiv');
-            alertDiv.textContent = message;
-            alertDiv.style.display = 'block';
-            alertDiv.className = 'alert ' + type;
-            
-            setTimeout(function() {
-                alertDiv.style.display = 'none';
-            }, 5000);
-        }
-
-        function updateStatus(message) {
-            console.log('Status: ' + message);
-            document.getElementById('status').textContent = message;
-        }
-
-        // Initialize app
-        function initializeApp() {
-            console.log('Initializing app...');
-            
-            // Load saved theme
-            const savedTheme = localStorage.getItem('theme');
-            if (savedTheme === 'dark') {
-                document.body.classList.add('dark-mode');
-                document.getElementById('themeToggle').textContent = '☀️ Light';
-            }
-
-            // Load saved configuration
-            loadSavedConfiguration();
-            
-            // Setup event listeners
-            setupEventListeners();
-            
-            updateStatus('Ready to configure - Click Demo Mode or Settings');
-            showAlert('Welcome! Click "Demo Mode" to see how it works, or "Settings" to configure your data.', 'info');
-        }
-
-        // Load saved configuration
-        function loadSavedConfiguration() {
-            console.log('Loading saved configuration...');
-            const saved = localStorage.getItem('dwLocationConfig');
+        function loadConfig() {
+            const saved = localStorage.getItem('dwConfig');
             if (saved) {
                 try {
-                    const config = JSON.parse(saved);
-                    Object.assign(appState, config);
-                    
-                    // Populate form fields
-                    if (appState.apiKey) document.getElementById('apiKey').value = appState.apiKey;
-                    if (appState.sheetId) document.getElementById('sheetId').value = appState.sheetId;
-                    if (appState.range) document.getElementById('range').value = appState.range;
-                    
-                    updateStatus('Configuration loaded from storage');
-                    
-                    // Enable buttons if we have configuration
-                    if (appState.apiKey && appState.sheetId) {
-                        enableButtons();
+                    appConfig = JSON.parse(saved);
+                    document.getElementById('apiKey').value = appConfig.apiKey || '';
+                    document.getElementById('sheetId').value = appConfig.sheetId || '';
+                    if (appConfig.apiKey && appConfig.sheetId) {
+                        document.getElementById('qrBtn').disabled = false;
                     }
-                } catch (error) {
-                    console.error('Error loading configuration:', error);
+                } catch (e) {
+                    console.error('Error loading config:', e);
                 }
             }
         }
 
-        // Setup event listeners
-        function setupEventListeners() {
-            console.log('Setting up event listeners...');
-            
-            // Theme toggle
-            const themeToggle = document.getElementById('themeToggle');
-            if (themeToggle) {
-                themeToggle.addEventListener('click', function() {
-                    console.log('Theme toggle clicked');
-                    toggleTheme();
-                });
-            }
-            
-            // Main buttons
-            const initBtn = document.getElementById('initBtn');
-            if (initBtn) {
-                initBtn.addEventListener('click', function() {
-                    console.log('Initialize button clicked');
-                    initializeWithConfiguration();
-                });
-            }
-            
-            const demoBtn = document.getElementById('demoBtn');
-            if (demoBtn) {
-                demoBtn.addEventListener('click', function() {
-                    console.log('Demo button clicked');
-                    toggleDemoMode();
-                });
-            }
-            
-            const setupBtn = document.getElementById('setupBtn');
-            if (setupBtn) {
-                setupBtn.addEventListener('click', function() {
-                    console.log('Setup button clicked');
-                    toggleSetupForm(true);
-                });
-            }
-            
-            const qrBtn = document.getElementById('qrBtn');
-            if (qrBtn) {
-                qrBtn.addEventListener('click', function() {
-                    console.log('QR button clicked');
-                    generateQRCode();
-                });
-            }
-            
-            const refreshBtn = document.getElementById('refreshBtn');
-            if (refreshBtn) {
-                refreshBtn.addEventListener('click', function() {
-                    console.log('Refresh button clicked');
-                    refreshData();
-                });
-            }
-            
-            const exportBtn = document.getElementById('exportBtn');
-            if (exportBtn) {
-                exportBtn.addEventListener('click', function() {
-                    console.log('Export button clicked');
-                    exportData();
-                });
-            }
-            
-            // Setup form buttons
-            const saveBtn = document.getElementById('saveBtn');
-            if (saveBtn) {
-                saveBtn.addEventListener('click', function() {
-                    console.log('Save button clicked');
-                    saveConfiguration();
-                });
-            }
-            
-            const testBtn = document.getElementById('testBtn');
-            if (testBtn) {
-                testBtn.addEventListener('click', function() {
-                    console.log('Test button clicked');
-                    testConnection();
-                });
-            }
-            
-            const cancelBtn = document.getElementById('cancelBtn');
-            if (cancelBtn) {
-                cancelBtn.addEventListener('click', function() {
-                    console.log('Cancel button clicked');
-                    toggleSetupForm(false);
-                });
-            }
-            
-            const clearBtn = document.getElementById('clearBtn');
-            if (clearBtn) {
-                clearBtn.addEventListener('click', function() {
-                    console.log('Clear button clicked');
-                    clearAllData();
-                });
-            }
-            
-            console.log('Event listeners setup complete');
+        function setupEvents() {
+            document.getElementById('setupBtn').onclick = function() { showSetup(true); };
+            document.getElementById('demoBtn').onclick = toggleDemo;
+            document.getElementById('saveBtn').onclick = saveConfig;
+            document.getElementById('testBtn').onclick = testConnection;
+            document.getElementById('cancelBtn').onclick = function() { showSetup(false); };
+            document.getElementById('qrBtn').onclick = generateQR;
         }
 
-        // Theme toggle
-        function toggleTheme() {
-            document.body.classList.toggle('dark-mode');
-            const btn = document.getElementById('themeToggle');
-            const isDark = document.body.classList.contains('dark-mode');
-            btn.textContent = isDark ? '☀️ Light' : '🌙 Dark';
-            localStorage.setItem('theme', isDark ? 'dark' : 'light');
-            showAlert('Switched to ' + (isDark ? 'dark' : 'light') + ' theme', 'info');
+        function showAlert(msg, type) {
+            const alert = document.getElementById('alert');
+            alert.textContent = msg;
+            alert.className = 'alert ' + type;
+            alert.style.display = 'block';
+            setTimeout(function() { alert.style.display = 'none'; }, 5000);
         }
 
-        // Toggle setup form
-        function toggleSetupForm(show) {
-            console.log('toggleSetupForm called with show =', show);
-            
-            const form = document.getElementById('setupForm');
-            const panel = document.getElementById('mainPanel');
-            const demoData = document.getElementById('demoData');
-            
-            console.log('Form element:', form);
-            console.log('Panel element:', panel);
-            
-            if (!form || !panel) {
-                console.error('Required elements not found!');
-                showAlert('Error: UI elements not found', 'error');
-                return;
-            }
-            
-            if (show === null) {
-                show = !form.classList.contains('active');
-            }
-            
-            console.log('Setting form active to:', show);
-            
-            form.classList.toggle('active', show);
-            panel.style.display = show ? 'none' : 'block';
-            
-            if (demoData) {
-                demoData.classList.remove('active');
-            }
-            
-            if (show) {
-                updateStatus('Configuration panel open');
-                showAlert('Configuration panel opened', 'info');
-            } else {
-                updateStatus('Configuration panel closed');
-            }
+        function showSetup(show) {
+            document.getElementById('setupForm').classList.toggle('hidden', !show);
+            document.getElementById('mainPanel').classList.toggle('hidden', show);
+            document.getElementById('demoData').classList.add('hidden');
         }
 
-        // Toggle demo mode
-        function toggleDemoMode() {
+        function toggleDemo() {
             isDemoMode = !isDemoMode;
-            const demoData = document.getElementById('demoData');
-            const setupForm = document.getElementById('setupForm');
-            const mainPanel = document.getElementById('mainPanel');
-            
+            document.getElementById('demoData').classList.toggle('hidden', !isDemoMode);
+            document.getElementById('mainPanel').classList.toggle('hidden', isDemoMode);
+            document.getElementById('setupForm').classList.add('hidden');
             if (isDemoMode) {
-                demoData.classList.add('active');
-                setupForm.classList.remove('active');
-                mainPanel.style.display = 'none';
-                updateStatus('Demo mode active - Showing sample data');
-                enableButtons();
-                showAlert('Demo mode activated! This shows how the app works with sample data.', 'info');
-            } else {
-                exitDemoMode();
+                document.getElementById('qrBtn').disabled = false;
+                showAlert('Demo mode activated!', 'info');
             }
         }
 
-        // Exit demo mode
-        function exitDemoMode() {
+        function exitDemo() {
             isDemoMode = false;
-            const demoData = document.getElementById('demoData');
-            const mainPanel = document.getElementById('mainPanel');
-            
-            demoData.classList.remove('active');
-            mainPanel.style.display = 'block';
-            updateStatus('Demo mode disabled');
-            showAlert('Demo mode disabled', 'info');
+            document.getElementById('demoData').classList.add('hidden');
+            document.getElementById('mainPanel').classList.remove('hidden');
+            showAlert('Demo mode exited', 'info');
         }
 
-        // Initialize with configuration
-        function initializeWithConfiguration() {
-            if (!appState.apiKey || !appState.sheetId) {
-                showAlert('Please configure your API key and Sheet ID first in Settings', 'warning');
+        function saveConfig() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const sheetId = document.getElementById('sheetId').value.trim();
+            
+            if (!apiKey || !sheetId) {
+                showAlert('Please enter both API key and Sheet ID', 'error');
                 return;
             }
-            
-            updateStatus('Initializing with saved configuration...');
-            showAlert('Attempting to initialize with saved configuration...', 'info');
-            
-            // Load Google Maps with the user's API key
-            loadGoogleMaps();
-            
-            // Fetch data from Google Sheets
-            fetchSheetsData();
-            
-            enableButtons();
-            isInitialized = true;
-            updateStatus('App initialized successfully');
-            showAlert('App initialized! Loading map and data...', 'success');
+
+            appConfig = { apiKey: apiKey, sheetId: sheetId };
+            localStorage.setItem('dwConfig', JSON.stringify(appConfig));
+            showAlert('Configuration saved successfully!', 'success');
+            showSetup(false);
+            document.getElementById('qrBtn').disabled = false;
         }
 
-        // Load Google Maps
-        function loadGoogleMaps() {
-            // Check if API key is valid format
-            if (!appState.apiKey || appState.apiKey.length < 20) {
-                showAlert('Invalid Google Maps API key format. Please check your API key in Settings.', 'error');
-                updateStatus('Invalid API key');
+        function testConnection() {
+            const sheetId = document.getElementById('sheetId').value.trim();
+            if (!sheetId) {
+                showAlert('Please enter Sheet ID first', 'error');
                 return;
             }
+
+            showAlert('Testing connection...', 'info');
+            const csvUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/export?format=csv';
             
-            // Remove any existing Google Maps scripts
-            const existingScripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
-            existingScripts.forEach(function(script) {
-                script.remove();
-            });
+            fetch(csvUrl)
+                .then(function(response) {
+                    if (!response.ok) throw new Error('Failed to access sheet');
+                    return response.text();
+                })
+                .then(function(csv) {
+                    const lines = csv.split('\n').length - 1;
+                    showAlert('✅ Connection successful! Found ' + lines + ' data rows.', 'success');
+                })
+                .catch(function() {
+                    showAlert('❌ Connection failed. Check Sheet ID and ensure sheet is published to web.', 'error');
+                });
+        }
+
+        function generateQR() {
+            const url = isDemoMode ? 
+                'https://maps.google.com/maps?q=34.0522,-118.2437' :
+                'https://maps.google.com/maps?q=stores+near+me';
             
-            // Clean up
+            const title = isDemoMode ? '📱 Demo QR Code' : '📱 Location QR Code';
+            const desc = isDemoMode ? 
+                'Demo location in downtown Los Angeles' : 
+                'Your configured locations';
+            
+            showQRModal(title, url, desc);
+        }
+
+        function generateDemoQR() {
+            showQRModal('📱 Demo QR Code', 'https://maps.google.com/maps?q=34.0522,-118.2437', 'Downtown LA demo location - scan with your phone camera');
+        }
+
+        function showQRModal(title, url, desc) {
+            document.getElementById('qrTitle').textContent = title;
+            document.getElementById('qrDesc').innerHTML = '<p style="color: #666;">' + desc + '</p><a href="' + url + '" target="_blank" class="btn btn-secondary" style="margin-top: 10px;">📍 Open in Google Maps</a>';
+            
+            const qrDiv = document.getElementById('qrCode');
+            qrDiv.innerHTML = '';
+            
+            if (typeof QRCode !== 'undefined') {
+                try {
+                    new QRCode(qrDiv, {
+                        text: url,
+                        width: 256,
+                        height: 256,
+                        colorDark: '#000000',
+                        colorLight: '#ffffff',
+                        correctLevel: QRCode.CorrectLevel.L
+                    });
+                    
+                    setTimeout(function() {
+                        const tips = document.createElement('div');
+                        tips.style.cssText = 'margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; font-size: 14px; color: #333;';
+                        tips.innerHTML = '<strong>📱 Scanning Tips:</strong><br>• Open your phone camera app<br>• Point at QR code 8-12 inches away<br>• Tap notification to open Google Maps';
+                        qrDiv.appendChild(tips);
+                    }, 100);
+                } catch (error) {
+                    qrDiv.innerHTML = '<p style="color: red;">Error generating QR code</p>';
+                }
+            } else {
+                qrDiv.innerHTML = '<p style="color: red;">QR Code library not loaded</p>';
+            }
+            
+            document.getElementById('qrModal').style.display = 'flex';
+        }
+
+        function closeQR() {
+            document.getElementById('qrModal').style.display = 'none';
+        }
+
+        window.generateDemoQR = generateDemoQR;
+        window.exitDemo = exitDemo;
+        window.closeQR = closeQR;
+    </script>
+</body>
+</html>
