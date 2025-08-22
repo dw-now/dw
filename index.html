@@ -618,6 +618,15 @@
             initializeApp();
         });
 
+        // Backup initialization in case DOMContentLoaded already fired
+        if (document.readyState === 'loading') {
+            // Document still loading, wait for DOMContentLoaded
+        } else {
+            // Document already loaded
+            console.log('Document already loaded, initializing immediately...');
+            setTimeout(initializeApp, 100);
+        }
+
         // Utility functions
         function showAlert(message, type = 'info') {
             console.log(`Alert (${type}): ${message}`);
@@ -688,62 +697,95 @@
             console.log('Setting up event listeners...');
             
             // Theme toggle
-            document.getElementById('themeToggle').addEventListener('click', function() {
-                console.log('Theme toggle clicked');
-                toggleTheme();
-            });
+            const themeToggle = document.getElementById('themeToggle');
+            if (themeToggle) {
+                themeToggle.addEventListener('click', function() {
+                    console.log('Theme toggle clicked');
+                    toggleTheme();
+                });
+            }
             
             // Main buttons
-            document.getElementById('initBtn').addEventListener('click', function() {
-                console.log('Initialize button clicked');
-                initializeWithConfiguration();
-            });
+            const initBtn = document.getElementById('initBtn');
+            if (initBtn) {
+                initBtn.addEventListener('click', function() {
+                    console.log('Initialize button clicked');
+                    initializeWithConfiguration();
+                });
+            }
             
-            document.getElementById('demoBtn').addEventListener('click', function() {
-                console.log('Demo button clicked');
-                toggleDemoMode();
-            });
+            const demoBtn = document.getElementById('demoBtn');
+            if (demoBtn) {
+                demoBtn.addEventListener('click', function() {
+                    console.log('Demo button clicked');
+                    toggleDemoMode();
+                });
+            }
             
-            document.getElementById('setupBtn').addEventListener('click', function() {
-                console.log('Setup button clicked');
-                toggleSetupForm(true);
-            });
+            const setupBtn = document.getElementById('setupBtn');
+            if (setupBtn) {
+                setupBtn.addEventListener('click', function() {
+                    console.log('Setup button clicked');
+                    toggleSetupForm(true);
+                });
+            }
             
-            document.getElementById('qrBtn').addEventListener('click', function() {
-                console.log('QR button clicked');
-                generateQRCode();
-            });
+            const qrBtn = document.getElementById('qrBtn');
+            if (qrBtn) {
+                qrBtn.addEventListener('click', function() {
+                    console.log('QR button clicked');
+                    generateQRCode();
+                });
+            }
             
-            document.getElementById('refreshBtn').addEventListener('click', function() {
-                console.log('Refresh button clicked');
-                refreshData();
-            });
+            const refreshBtn = document.getElementById('refreshBtn');
+            if (refreshBtn) {
+                refreshBtn.addEventListener('click', function() {
+                    console.log('Refresh button clicked');
+                    refreshData();
+                });
+            }
             
-            document.getElementById('exportBtn').addEventListener('click', function() {
-                console.log('Export button clicked');
-                exportData();
-            });
+            const exportBtn = document.getElementById('exportBtn');
+            if (exportBtn) {
+                exportBtn.addEventListener('click', function() {
+                    console.log('Export button clicked');
+                    exportData();
+                });
+            }
             
             // Setup form buttons
-            document.getElementById('saveBtn').addEventListener('click', function() {
-                console.log('Save button clicked');
-                saveConfiguration();
-            });
+            const saveBtn = document.getElementById('saveBtn');
+            if (saveBtn) {
+                saveBtn.addEventListener('click', function() {
+                    console.log('Save button clicked');
+                    saveConfiguration();
+                });
+            }
             
-            document.getElementById('testBtn').addEventListener('click', function() {
-                console.log('Test button clicked');
-                testConnection();
-            });
+            const testBtn = document.getElementById('testBtn');
+            if (testBtn) {
+                testBtn.addEventListener('click', function() {
+                    console.log('Test button clicked');
+                    testConnection();
+                });
+            }
             
-            document.getElementById('cancelBtn').addEventListener('click', function() {
-                console.log('Cancel button clicked');
-                toggleSetupForm(false);
-            });
+            const cancelBtn = document.getElementById('cancelBtn');
+            if (cancelBtn) {
+                cancelBtn.addEventListener('click', function() {
+                    console.log('Cancel button clicked');
+                    toggleSetupForm(false);
+                });
+            }
             
-            document.getElementById('clearBtn').addEventListener('click', function() {
-                console.log('Clear button clicked');
-                clearAllData();
-            });
+            const clearBtn = document.getElementById('clearBtn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', function() {
+                    console.log('Clear button clicked');
+                    clearAllData();
+                });
+            }
             
             console.log('Event listeners setup complete');
         }
@@ -837,20 +879,37 @@
 
         // Toggle setup form
         function toggleSetupForm(show = null) {
+            console.log('toggleSetupForm called with show =', show);
+            
             const form = document.getElementById('setupForm');
             const panel = document.getElementById('mainPanel');
             const demoData = document.getElementById('demoData');
+            
+            console.log('Form element:', form);
+            console.log('Panel element:', panel);
+            
+            if (!form || !panel) {
+                console.error('Required elements not found!');
+                showAlert('Error: UI elements not found', 'error');
+                return;
+            }
             
             if (show === null) {
                 show = !form.classList.contains('active');
             }
             
+            console.log('Setting form active to:', show);
+            
             form.classList.toggle('active', show);
             panel.style.display = show ? 'none' : 'block';
-            demoData.classList.remove('active');
+            
+            if (demoData) {
+                demoData.classList.remove('active');
+            }
             
             if (show) {
                 updateStatus('Configuration panel open');
+                showAlert('Configuration panel opened', 'info');
             } else {
                 updateStatus('Configuration panel closed');
             }
