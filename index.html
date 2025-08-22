@@ -825,6 +825,13 @@
 
         // Load Google Maps
         function loadGoogleMaps() {
+            // Check if API key is valid format
+            if (!appState.apiKey || appState.apiKey.length < 20) {
+                showAlert('Invalid Google Maps API key format. Please check your API key in Settings.', 'error');
+                updateStatus('Invalid API key');
+                return;
+            }
+            
             // Update the Maps API script with the user's API key
             const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
             if (existingScript) {
@@ -836,8 +843,8 @@
             script.async = true;
             script.defer = true;
             script.onerror = function() {
-                showAlert('Failed to load Google Maps. Check your API key.', 'error');
-                updateStatus('Map loading failed');
+                showAlert('Failed to load Google Maps. Please check your API key and ensure it has the following APIs enabled: Maps JavaScript API, Geocoding API, Places API', 'error');
+                updateStatus('Map loading failed - check API key');
             };
             
             document.head.appendChild(script);
@@ -927,33 +934,68 @@
                 const response = await fetch(csvUrl);
                 
                 if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    throw new Error(`HTTP error! status: ${response.status}. Make sure your Google Sheet is published to web as CSV.`);
                 }
                 
                 const csvText = await response.text();
-                console.log('CSV data received:', csvText.substring(0, 200) + '...');
+                console.log('CSV data received:', csvText.substring(0, 500) + '...');
                 
-                // Parse CSV data
+                // Parse CSV data with better error handling
                 const lines = csvText.trim().split('\n');
-                const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
+                if (lines.length < 2) {
+                    throw new Error('Sheet appears to be empty or has no data rows');
+                }
                 
+                const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim().toLowerCase());
                 console.log('Headers found:', headers);
+                
+                // Validate expected columns
+                const nameCol = headers.findIndex(h => h.includes('name') || h.includes('location') || h.includes('store'));
+                const addressCol = headers.findIndex(h => h.includes('address') || h.includes('location') || h.includes('addr'));
+                const countCol = headers.findIndex(h => h.includes('count') || h.includes('stock') || h.includes('available') || h.includes('qty'));
+                
+                if (nameCol === -1) {
+                    showAlert('Could not find name/location column in your sheet. Expected headers like: Name, Location, Store', 'warning');
+                }
+                if (addressCol === -1) {
+                    showAlert('Could not find address column in your sheet. Expected headers like: Address, Location, Addr', 'warning');
+                }
+                
+                console.log(`Column mapping - Name: ${nameCol}, Address: ${addressCol}, Count: ${countCol}`);
                 
                 sheetsData = [];
                 
                 for (let i = 1; i < lines.length; i++) {
-                    const values = lines[i].split(',').map(v => v.replace(/"/g, '').trim());
+                    // Handle CSV parsing with potential commas in quoted fields
+                    const values = parseCSVLine(lines[i]);
                     
                     if (values.length >= 2) {
+                        const name = (values[nameCol] || values[0] || `Location ${i}`).trim();
+                        const address = (values[addressCol] || values[1] || '').trim();
+                        const count = parseInt(values[countCol] || values[2] || '0') || 0;
+                        
+                        // Skip rows with empty/invalid addresses
+                        if (!address || address.length < 5) {
+                            console.warn(`Skipping row ${i}: Invalid address "${address}"`);
+                            continue;
+                        }
+                        
                         const location = {
-                            name: values[0] || `Location ${i}`,
-                            address: values[1] || '',
-                            count: parseInt(values[2]) || 0,
+                            name: name,
+                            address: address,
+                            count: count,
                             distance: 0 // Will be calculated later
                         };
                         
-                        // Geocode the address
-                        await geocodeLocation(location);
+                        console.log(`Processing location ${i}:`, location);
+                        
+                        // Only geocode if we have a proper address
+                        if (window.google && window.google.maps) {
+                            await geocodeLocation(location);
+                        } else {
+                            console.warn('Google Maps not loaded yet, skipping geocoding');
+                        }
+                        
                         sheetsData.push(location);
                     }
                 }
@@ -966,24 +1008,61 @@
                 // Add markers to map if map is ready
                 if (map && sheetsData.length > 0) {
                     addMarkersToMap();
+                } else if (sheetsData.length === 0) {
+                    showAlert('No valid locations found in your sheet. Please check your data format.', 'warning');
                 }
                 
             } catch (error) {
                 console.error('Error fetching sheets data:', error);
-                showAlert(`Failed to fetch data: ${error.message}. Make sure your sheet is published to web as CSV.`, 'error');
+                showAlert(`Failed to fetch data: ${error.message}`, 'error');
                 updateStatus('Failed to load data from Google Sheets');
             }
         }
 
+        // Parse CSV line handling quoted fields with commas
+        function parseCSVLine(line) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            
+            result.push(current.trim());
+            return result.map(field => field.replace(/^"|"$/g, '')); // Remove surrounding quotes
+        }
+
         // Geocode location using Google Maps API
         async function geocodeLocation(location) {
-            if (!location.address || !window.google) {
+            if (!location.address || !window.google || !window.google.maps) {
+                console.warn(`Cannot geocode ${location.name}: Missing address or Google Maps not loaded`);
+                return;
+            }
+            
+            // Clean up the address
+            const cleanAddress = location.address.trim();
+            if (cleanAddress.length < 5) {
+                console.warn(`Skipping geocoding for ${location.name}: Address too short "${cleanAddress}"`);
                 return;
             }
             
             return new Promise((resolve) => {
                 const geocoder = new google.maps.Geocoder();
-                geocoder.geocode({ address: location.address }, (results, status) => {
+                
+                geocoder.geocode({ 
+                    address: cleanAddress,
+                    componentRestrictions: { country: 'US' } // Restrict to US for better results
+                }, (results, status) => {
                     if (status === 'OK' && results[0]) {
                         location.position = results[0].geometry.location;
                         
@@ -995,9 +1074,18 @@
                             );
                         }
                         
-                        console.log(`Geocoded ${location.name}:`, location.position.toString());
+                        console.log(`✓ Geocoded ${location.name}: ${location.position.toString()}, Distance: ${location.distance.toFixed(1)}mi`);
                     } else {
-                        console.warn(`Geocoding failed for ${location.name}:`, status);
+                        console.warn(`✗ Geocoding failed for ${location.name} (${cleanAddress}): ${status}`);
+                        
+                        // Provide helpful error messages
+                        if (status === 'ZERO_RESULTS') {
+                            console.warn(`  → No results found. Check if "${cleanAddress}" is a valid address.`);
+                        } else if (status === 'OVER_QUERY_LIMIT') {
+                            console.warn('  → Geocoding quota exceeded. Try again later.');
+                        } else if (status === 'REQUEST_DENIED') {
+                            console.warn('  → Geocoding request denied. Check API key permissions.');
+                        }
                     }
                     resolve();
                 });
@@ -1127,20 +1215,64 @@
                 showAlert('Please enter API key and Sheet ID first', 'error');
                 return;
             }
+            
+            if (apiKey.length < 20 || !apiKey.startsWith('AIza')) {
+                showAlert('API key format appears invalid. Google Maps API keys start with "AIza" and are about 39 characters long.', 'error');
+                return;
+            }
 
             try {
                 updateStatus('Testing connection...');
-                showAlert('Testing connection...', 'info');
+                showAlert('Testing connections...', 'info');
                 
-                // Simulate connection test
-                await new Promise(resolve => setTimeout(resolve, 2000));
+                // Test 1: Google Sheets access
+                console.log('Testing Google Sheets access...');
+                const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
+                const sheetResponse = await fetch(csvUrl);
                 
-                showAlert('Connection test successful! (Simulated)', 'success');
-                updateStatus('Connection verified');
+                if (!sheetResponse.ok) {
+                    throw new Error(`Google Sheets test failed (${sheetResponse.status}). Make sure your sheet is published to web as CSV.`);
+                }
+                
+                const csvText = await sheetResponse.text();
+                if (csvText.includes('<!DOCTYPE html>')) {
+                    throw new Error('Sheet returned HTML instead of CSV. Make sure it\'s published as CSV, not web page.');
+                }
+                
+                const lines = csvText.trim().split('\n');
+                console.log(`✓ Google Sheets: Found ${lines.length} rows`);
+                console.log('Sample data:', lines[0]);
+                
+                // Test 2: Google Maps API (basic validation)
+                console.log('Testing Google Maps API...');
+                const mapsTestUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=1600+Amphitheatre+Parkway,+Mountain+View,+CA&key=${apiKey}`;
+                const mapsResponse = await fetch(mapsTestUrl);
+                const mapsResult = await mapsResponse.json();
+                
+                if (mapsResult.status === 'REQUEST_DENIED') {
+                    throw new Error('Google Maps API key is invalid or doesn\'t have Geocoding API enabled.');
+                } else if (mapsResult.status === 'OVER_QUERY_LIMIT') {
+                    throw new Error('Google Maps API quota exceeded.');
+                } else if (mapsResult.error_message) {
+                    throw new Error(`Google Maps API error: ${mapsResult.error_message}`);
+                }
+                
+                console.log('✓ Google Maps API: Working');
+                
+                showAlert('✅ All connections successful! You can now initialize the app.', 'success');
+                updateStatus('All connections verified');
+                
+                // Show data preview
+                if (lines.length > 1) {
+                    const preview = lines.slice(0, 3).join('\n');
+                    console.log('Data preview:', preview);
+                    showAlert(`Found ${lines.length - 1} data rows. Preview:\n${lines[0]}`, 'info');
+                }
                 
             } catch (error) {
-                showAlert(`Connection test failed: ${error.message}`, 'error');
-                updateStatus('Connection failed');
+                console.error('Connection test failed:', error);
+                showAlert(`❌ Connection test failed: ${error.message}`, 'error');
+                updateStatus('Connection test failed');
             }
         }
 
