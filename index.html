@@ -266,11 +266,25 @@
             showAlert('Initializing app with your configuration...', 'info');
             document.getElementById('status').textContent = 'Initializing...';
             
-            // Load Google Maps
+            // Make sure we're showing the main panel and map
+            document.getElementById('mainPanel').classList.remove('hidden');
+            document.getElementById('setupForm').classList.add('hidden');
+            document.getElementById('demoData').classList.add('hidden');
+            
+            // Ensure map container is visible
+            const mapElement = document.getElementById('map');
+            if (mapElement) {
+                mapElement.style.display = 'flex';
+                mapElement.style.visibility = 'visible';
+            }
+            
+            // Load Google Maps first
             loadGoogleMaps();
             
-            // Fetch data from Google Sheets
-            fetchSheetsData();
+            // Then fetch data from Google Sheets
+            setTimeout(function() {
+                fetchSheetsData();
+            }, 1000);
             
             enableButtons();
         }
@@ -306,47 +320,76 @@
         }
 
         window.initMap = function() {
+            console.log('initMap called');
+            
             const mapElement = document.getElementById('map');
             const placeholder = document.getElementById('mapPlaceholder');
+            
+            if (!mapElement) {
+                console.error('Map element not found');
+                showAlert('Map element not found', 'error');
+                return;
+            }
+            
+            console.log('Map element found:', mapElement);
+            
+            // Make sure map is visible and has dimensions
+            mapElement.style.display = 'flex';
+            mapElement.style.height = '400px';
             
             if (placeholder) {
                 placeholder.style.display = 'none';
             }
             
-            map = new google.maps.Map(mapElement, {
-                zoom: 10,
-                center: { lat: 34.0522, lng: -118.2437 },
-                mapTypeId: 'roadmap'
-            });
-            
-            // Get user location
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(function(position) {
-                    userLocation = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                    };
-                    map.setCenter(userLocation);
-                    map.setZoom(12);
-                    
-                    // Add user location marker using Circle (avoids deprecation)
-                    new google.maps.Circle({
-                        strokeColor: '#4285f4',
-                        strokeOpacity: 0.8,
-                        strokeWeight: 3,
-                        fillColor: '#4285f4',
-                        fillOpacity: 0.8,
-                        map: map,
-                        center: userLocation,
-                        radius: 100
-                    });
-                    
-                    showAlert('Map loaded with your location!', 'success');
-                    document.getElementById('status').textContent = 'Map ready - showing your location';
-                }, function() {
-                    showAlert('Could not get your location. Using default location.', 'warning');
-                    document.getElementById('status').textContent = 'Map ready - using default location';
+            try {
+                map = new google.maps.Map(mapElement, {
+                    zoom: 10,
+                    center: { lat: 34.0522, lng: -118.2437 },
+                    mapTypeId: 'roadmap'
                 });
+                
+                console.log('Map created successfully');
+                showAlert('Google Maps loaded successfully!', 'success');
+                document.getElementById('status').textContent = 'Map loaded - getting your location...';
+                
+                // Get user location
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(function(position) {
+                        userLocation = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude
+                        };
+                        map.setCenter(userLocation);
+                        map.setZoom(12);
+                        
+                        // Add user location marker using Circle (avoids deprecation)
+                        new google.maps.Circle({
+                            strokeColor: '#4285f4',
+                            strokeOpacity: 0.8,
+                            strokeWeight: 3,
+                            fillColor: '#4285f4',
+                            fillOpacity: 0.8,
+                            map: map,
+                            center: userLocation,
+                            radius: 100
+                        });
+                        
+                        showAlert('Map loaded with your location!', 'success');
+                        document.getElementById('status').textContent = 'Map ready - showing your location';
+                    }, function(error) {
+                        console.warn('Geolocation error:', error);
+                        showAlert('Could not get your location. Using default location.', 'warning');
+                        document.getElementById('status').textContent = 'Map ready - using default location (LA)';
+                    });
+                } else {
+                    showAlert('Geolocation not supported. Using default location.', 'warning');
+                    document.getElementById('status').textContent = 'Map ready - using default location (LA)';
+                }
+                
+            } catch (error) {
+                console.error('Error creating map:', error);
+                showAlert('Failed to create map: ' + error.message, 'error');
+                document.getElementById('status').textContent = 'Map creation failed';
             }
         };
 
@@ -451,9 +494,28 @@
         }
 
         function showSetup(show) {
-            document.getElementById('setupForm').classList.toggle('hidden', !show);
-            document.getElementById('mainPanel').classList.toggle('hidden', show);
-            document.getElementById('demoData').classList.add('hidden');
+            const setupForm = document.getElementById('setupForm');
+            const mainPanel = document.getElementById('mainPanel');
+            const demoData = document.getElementById('demoData');
+            
+            if (show) {
+                setupForm.classList.remove('hidden');
+                mainPanel.classList.add('hidden');
+                demoData.classList.add('hidden');
+                document.getElementById('status').textContent = 'Settings panel open';
+            } else {
+                setupForm.classList.add('hidden');
+                mainPanel.classList.remove('hidden');
+                demoData.classList.add('hidden');
+                document.getElementById('status').textContent = 'Ready to initialize';
+                
+                // Ensure map is visible when returning to main panel
+                const mapElement = document.getElementById('map');
+                if (mapElement) {
+                    mapElement.style.display = 'flex';
+                    mapElement.style.visibility = 'visible';
+                }
+            }
         }
 
         function toggleDemo() {
