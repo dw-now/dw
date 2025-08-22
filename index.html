@@ -568,9 +568,9 @@
                 existingScript.remove();
             }
             
-            // Use current version (not retired)
+            // Use current stable version (no version parameter to avoid retirement warnings)
             const script = document.createElement('script');
-            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initGoogleMap&loading=async';
+            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initGoogleMap&loading=async&libraries=geometry';
             script.async = true;
             script.defer = true;
             script.id = 'google-maps-script';
@@ -598,23 +598,45 @@
             const geocoder = new google.maps.Geocoder();
             const bounds = new google.maps.LatLngBounds();
             let processedCount = 0;
+            let successCount = 0;
             
             sheetsData.forEach(function(location, index) {
-                if (!location.address) {
-                    console.warn('No address for location:', location.name);
+                if (!location.address || location.address.length < 5) {
+                    console.warn('⚠️ Skipping location "' + location.name + '" - invalid or too short address: "' + (location.address || 'empty') + '"');
+                    processedCount++;
                     return;
                 }
                 
-                console.log('Geocoding:', location.name, '-', location.address);
+                // Clean and validate the address
+                const cleanAddress = location.address.trim();
                 
-                geocoder.geocode({ address: location.address }, function(results, status) {
+                // Skip obvious invalid addresses
+                const invalidPatterns = /^(reg\d+|test|sample|n\/a|tbd|pending)$/i;
+                if (invalidPatterns.test(cleanAddress)) {
+                    console.warn('⚠️ Skipping location "' + location.name + '" - appears to be placeholder address: "' + cleanAddress + '"');
+                    processedCount++;
+                    
+                    // Check if this was the last location to process
+                    if (processedCount === sheetsData.length) {
+                        finishLocationProcessing(successCount, bounds);
+                    }
+                    return;
+                }
+                
+                console.log('🔍 Geocoding:', location.name, '- Address:', cleanAddress);
+                
+                geocoder.geocode({ 
+                    address: cleanAddress,
+                    componentRestrictions: { country: 'US' } // Restrict to US for better results
+                }, function(results, status) {
                     processedCount++;
                     
                     if (status === 'OK' && results[0]) {
                         const position = results[0].geometry.location;
+                        successCount++;
                         console.log('✅ Geocoded', location.name, 'to', position.toString());
                         
-                        // Create marker
+                        // Create colored circle marker
                         const marker = new google.maps.Circle({
                             strokeColor: location.count > 0 ? '#4CAF50' : '#999',
                             strokeOpacity: 0.8,
@@ -623,15 +645,18 @@
                             fillOpacity: 0.35,
                             map: map,
                             center: position,
-                            radius: 200
+                            radius: 300 // Larger radius for better visibility
                         });
                         
                         // Create info window
                         const infoWindow = new google.maps.InfoWindow({
-                            content: '<div style="padding: 10px;">' +
-                                '<h3 style="margin: 0 0 10px 0;">' + location.name + '</h3>' +
-                                '<p><strong>Address:</strong> ' + location.address + '</p>' +
-                                '<p><strong>Available:</strong> ' + location.count + '</p>' +
+                            content: '<div style="padding: 12px; min-width: 200px;">' +
+                                '<h3 style="margin: 0 0 10px 0; color: #333; font-size: 16px;">' + location.name + '</h3>' +
+                                '<p style="margin: 5px 0; color: #666;"><strong>Address:</strong> ' + location.address + '</p>' +
+                                '<p style="margin: 5px 0; color: #666;"><strong>Available:</strong> <span style="color: ' + (location.count > 0 ? '#4CAF50' : '#999') + '; font-weight: bold;">' + location.count + '</span></p>' +
+                                '<div style="margin-top: 10px;">' +
+                                '<a href="https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(location.address) + '" target="_blank" style="color: #1976d2; text-decoration: none; font-weight: bold;">📍 Get Directions</a>' +
+                                '</div>' +
                                 '</div>'
                         });
                         
@@ -642,30 +667,57 @@
                         
                         bounds.extend(position);
                         
-                        // If this is the last location, fit bounds
-                        if (processedCount === sheetsData.length) {
-                            console.log('All locations processed, fitting bounds');
-                            if (userLocation) {
-                                bounds.extend(userLocation);
-                            }
-                            map.fitBounds(bounds);
-                            
-                            // Prevent zooming in too much
-                            google.maps.event.addListenerOnce(map, 'bounds_changed', function() {
-                                if (map.getZoom() > 15) {
-                                    map.setZoom(15);
-                                }
-                            });
-                        }
-                        
                     } else {
-                        console.warn('❌ Geocoding failed for', location.name, ':', status);
+                        console.warn('❌ Geocoding failed for "' + location.name + '" (Address: "' + cleanAddress + '")');
+                        console.warn('   Status:', status);
+                        
+                        if (status === 'ZERO_RESULTS') {
+                            console.warn('   → No results found for this address. Please check if the address is complete and valid.');
+                        } else if (status === 'OVER_QUERY_LIMIT') {
+                            console.warn('   → Geocoding quota exceeded.');
+                        } else if (status === 'REQUEST_DENIED') {
+                            console.warn('   → Geocoding request denied. Check API key permissions.');
+                        }
+                    }
+                    
+                    // If this is the last location, fit bounds
+                    if (processedCount === sheetsData.length) {
+                        finishLocationProcessing(successCount, bounds);
                     }
                 });
             });
+        }
+        
+        function finishLocationProcessing(successCount, bounds) {
+            console.log('Location processing complete. Successfully geocoded:', successCount, 'out of', sheetsData.length);
             
-            if (sheetsData.length > 0) {
-                showAlert('Adding ' + sheetsData.length + ' locations to map...', 'info');
+            if (successCount > 0) {
+                // Add user location to bounds if available
+                if (userLocation) {
+                    bounds.extend(userLocation);
+                }
+                
+                // Fit map to show all markers
+                map.fitBounds(bounds);
+                
+                // Prevent zooming in too much for single locations
+                google.maps.event.addListenerOnce(map, 'bounds_changed', function() {
+                    if (map.getZoom() > 15) {
+                        map.setZoom(15);
+                    }
+                });
+                
+                showAlert('✅ Successfully placed ' + successCount + ' locations on the map!', 'success');
+            } else {
+                showAlert('⚠️ Could not place any locations on the map. Please check that your addresses are complete and valid.', 'warning');
+            }
+            
+            // Update status
+            const skipped = sheetsData.length - successCount;
+            if (skipped > 0) {
+                document.getElementById('status').textContent = 'Map ready - ' + successCount + ' locations shown (' + skipped + ' skipped due to invalid addresses)';
+            } else {
+                document.getElementById('status').textContent = 'Map ready - showing ' + successCount + ' locations';
             }
         }
 
