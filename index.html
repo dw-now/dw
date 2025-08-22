@@ -11,85 +11,57 @@
             background: linear-gradient(135deg, #667eea, #764ba2); 
             min-height: 100vh; 
             color: white; 
-            padding: 20px;
         }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
         .header { text-align: center; margin-bottom: 30px; }
         .panel { 
             background: rgba(255,255,255,0.1); 
             padding: 20px; 
             border-radius: 10px; 
             margin-bottom: 20px; 
-            max-width: 800px;
-            margin-left: auto;
-            margin-right: auto;
         }
         .btn { 
             background: #4CAF50; 
             color: white; 
             border: none; 
-            padding: 12px 24px; 
-            border-radius: 6px; 
+            padding: 10px 20px; 
+            border-radius: 5px; 
             cursor: pointer; 
-            margin: 8px; 
-            font-size: 14px;
+            margin: 5px; 
         }
         .btn:hover { background: #45a049; }
         .btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-secondary { background: #2196F3; }
         .btn-danger { background: #f44336; }
-        input { 
+        input, select { 
             width: 100%; 
-            padding: 12px; 
-            margin: 8px 0; 
+            padding: 10px; 
+            margin: 5px 0; 
             border: 1px solid #ddd; 
-            border-radius: 6px; 
-            font-size: 14px;
+            border-radius: 5px; 
         }
         .hidden { display: none; }
         .alert { 
             padding: 15px; 
-            margin: 15px 0; 
-            border-radius: 6px; 
+            margin: 10px 0; 
+            border-radius: 5px; 
             display: none; 
         }
         .alert.success { background: rgba(76,175,80,0.2); border: 1px solid #4CAF50; }
         .alert.error { background: rgba(244,67,54,0.2); border: 1px solid #f44336; }
         .alert.warning { background: rgba(255,152,0,0.2); border: 1px solid #FF9800; }
         .alert.info { background: rgba(33,150,243,0.2); border: 1px solid #2196F3; }
-        .setup-form { 
-            background: rgba(255,255,255,0.95); 
-            color: #333; 
-            padding: 25px; 
-            border-radius: 10px; 
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        .demo-data { 
-            background: rgba(255,255,255,0.95); 
-            color: #333; 
-            padding: 25px; 
-            border-radius: 10px; 
-            max-width: 600px;
-            margin: 0 auto;
-        }
+        .setup-form { background: white; color: black; padding: 20px; border-radius: 10px; }
+        .setup-form.hidden { display: none; }
+        .demo-data { background: white; color: black; padding: 20px; border-radius: 10px; }
         .demo-location { 
             display: flex; 
             justify-content: space-between; 
-            align-items: center;
-            padding: 12px; 
-            margin: 8px 0; 
-            background: #f8f9fa; 
-            border-radius: 6px; 
-            border: 1px solid #dee2e6;
+            padding: 10px; 
+            margin: 5px 0; 
+            background: #f5f5f5; 
+            border-radius: 5px; 
         }
-        .location-count { 
-            background: #4CAF50; 
-            color: white; 
-            padding: 6px 12px; 
-            border-radius: 4px; 
-            font-weight: bold;
-        }
-        .location-count.zero { background: #999; }
         .qr-modal { 
             position: fixed; 
             top: 0; 
@@ -105,140 +77,119 @@
         .qr-content { 
             background: white; 
             padding: 30px; 
-            border-radius: 12px; 
+            border-radius: 10px; 
             text-align: center; 
-            color: #333; 
-            max-width: 90%;
-            max-height: 90%;
+            color: black; 
         }
+        #map { width: 100%; height: 400px; background: rgba(255,255,255,0.1); border-radius: 10px; }
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>🗺️ DW Location Tracker</h1>
-        <div id="status">Ready to configure</div>
-    </div>
+    <div class="container">
+        <div class="header">
+            <h1>🗺️ DW Location Tracker</h1>
+            <div id="status">Ready to configure</div>
+        </div>
 
-    <div class="panel" id="mainPanel">
-        <p style="margin-bottom: 20px; text-align: center;">
-            Welcome! Click <strong>Demo Mode</strong> to test the app or <strong>Settings</strong> to configure your Google Sheets data.
-        </p>
-        <div style="text-align: center;">
+        <div class="panel" id="mainPanel">
+            <p style="margin-bottom: 15px;">Click Demo Mode to test or Settings to configure your Google Sheets data.</p>
+            <button class="btn" id="initBtn">🚀 Initialize</button>
             <button class="btn" id="demoBtn">🎮 Demo Mode</button>
             <button class="btn btn-danger" id="setupBtn">⚙️ Settings</button>
-            <button class="btn btn-secondary" id="qrBtn" disabled>📱 Generate QR</button>
+            <button class="btn btn-secondary" id="qrBtn" disabled>📱 QR Code</button>
+            <button class="btn btn-secondary" id="refreshBtn" disabled>🔄 Refresh</button>
         </div>
-    </div>
 
-    <div class="setup-form hidden" id="setupForm">
-        <h3 style="margin-bottom: 20px;">⚙️ Configuration Settings</h3>
-        <div style="background: #e3f2fd; padding: 15px; border-radius: 6px; margin-bottom: 20px;">
-            <strong>Setup Instructions:</strong>
-            <ol style="margin: 10px 0; padding-left: 20px;">
-                <li>Open your Google Sheet</li>
-                <li>Click <strong>File → Share → Publish to web</strong></li>
-                <li>Select <strong>CSV</strong> format and click <strong>Publish</strong></li>
-                <li>Enter your details below</li>
-            </ol>
-        </div>
-        <label><strong>Google Maps API Key:</strong></label>
-        <input type="password" id="apiKey" placeholder="Enter your Google Maps API key">
-        <label><strong>Google Sheets ID:</strong></label>
-        <input type="text" id="sheetId" placeholder="Enter Sheet ID from URL">
-        <div style="margin-top: 20px; text-align: center;">
-            <button class="btn" id="saveBtn">💾 Save Configuration</button>
-            <button class="btn btn-secondary" id="testBtn">🧪 Test Connection</button>
+        <div class="setup-form hidden" id="setupForm">
+            <h3>Configuration Settings</h3>
+            <p><strong>Setup:</strong> Publish your Google Sheet to web as CSV, then enter details below.</p>
+            <label>Google Maps API Key:</label>
+            <input type="password" id="apiKey" placeholder="Enter API key">
+            <label>Google Sheets ID:</label>
+            <input type="text" id="sheetId" placeholder="Sheet ID from URL">
+            <br><br>
+            <button class="btn" id="saveBtn">💾 Save</button>
+            <button class="btn btn-secondary" id="testBtn">🧪 Test</button>
             <button class="btn btn-secondary" id="cancelBtn">❌ Cancel</button>
         </div>
-    </div>
 
-    <div class="demo-data hidden" id="demoData">
-        <h3 style="margin-bottom: 20px;">📍 Demo Locations</h3>
-        <p style="margin-bottom: 15px;">Sample locations showing how the app works:</p>
-        
-        <div class="demo-location">
-            <div>
-                <div style="font-weight: bold;">Downtown Store</div>
-                <div style="color: #666; font-size: 14px;">123 Main St, Los Angeles, CA</div>
+        <div id="map">
+            <div style="display: flex; align-items: center; justify-content: center; height: 100%; opacity: 0.7;">
+                🗺️ Map will appear after configuration
             </div>
-            <div class="location-count">15</div>
         </div>
-        
-        <div class="demo-location">
-            <div>
-                <div style="font-weight: bold;">Westside Location</div>
-                <div style="color: #666; font-size: 14px;">456 Ocean Ave, Santa Monica, CA</div>
-            </div>
-            <div class="location-count">8</div>
-        </div>
-        
-        <div class="demo-location">
-            <div>
-                <div style="font-weight: bold;">Hollywood Branch</div>
-                <div style="color: #666; font-size: 14px;">789 Sunset Blvd, Hollywood, CA</div>
-            </div>
-            <div class="location-count zero">0</div>
-        </div>
-        
-        <div style="margin-top: 25px; text-align: center;">
-            <button class="btn btn-secondary" onclick="generateDemoQR()">📱 Generate Demo QR</button>
-            <button class="btn" onclick="exitDemo()">✕ Exit Demo Mode</button>
-        </div>
-    </div>
 
-    <div class="qr-modal" id="qrModal">
-        <div class="qr-content">
-            <h3 id="qrTitle">📱 QR Code</h3>
-            <div id="qrCode" style="margin: 20px 0;"></div>
-            <div id="qrDesc" style="margin: 15px 0;"></div>
-            <button class="btn btn-secondary" onclick="closeQR()">Close</button>
+        <div class="demo-data hidden" id="demoData">
+            <h3>📍 Demo Locations</h3>
+            <div class="demo-location">
+                <div><strong>Downtown Store</strong><br>123 Main St, LA</div>
+                <div style="background: #4CAF50; color: white; padding: 5px 10px; border-radius: 3px;">15</div>
+            </div>
+            <div class="demo-location">
+                <div><strong>Westside Location</strong><br>456 Ocean Ave, SM</div>
+                <div style="background: #4CAF50; color: white; padding: 5px 10px; border-radius: 3px;">8</div>
+            </div>
+            <div class="demo-location">
+                <div><strong>Hollywood Branch</strong><br>789 Sunset Blvd, Hollywood</div>
+                <div style="background: #999; color: white; padding: 5px 10px; border-radius: 3px;">0</div>
+            </div>
+            <button class="btn btn-secondary" onclick="generateDemoQR()">📱 Demo QR</button>
+            <button class="btn" onclick="exitDemo()">✕ Exit Demo</button>
         </div>
-    </div>
 
-    <div class="alert" id="alert"></div>
+        <div class="qr-modal" id="qrModal">
+            <div class="qr-content">
+                <h3 id="qrTitle">📱 QR Code</h3>
+                <div id="qrCode" style="margin: 20px 0;"></div>
+                <div id="qrDesc"></div>
+                <button class="btn btn-secondary" onclick="closeQR()">Close</button>
+            </div>
+        </div>
+
+        <div class="alert" id="alert"></div>
+    </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         let isDemoMode = false;
         let appConfig = { apiKey: '', sheetId: '' };
 
-        document.addEventListener('DOMContentLoaded', function() {
+        // Initialize
+        document.addEventListener('DOMContentLoaded', init);
+
+        function init() {
             loadConfig();
             setupEvents();
-            showAlert('Welcome! Click Demo Mode to test or Settings to configure.', 'info');
-        });
+            showAlert('Welcome! Click Settings to configure or Demo Mode to test.', 'info');
+        }
 
         function loadConfig() {
             const saved = localStorage.getItem('dwConfig');
             if (saved) {
-                try {
-                    appConfig = JSON.parse(saved);
-                    document.getElementById('apiKey').value = appConfig.apiKey || '';
-                    document.getElementById('sheetId').value = appConfig.sheetId || '';
-                    if (appConfig.apiKey && appConfig.sheetId) {
-                        document.getElementById('qrBtn').disabled = false;
-                    }
-                } catch (e) {
-                    console.error('Error loading config:', e);
-                }
+                appConfig = JSON.parse(saved);
+                document.getElementById('apiKey').value = appConfig.apiKey || '';
+                document.getElementById('sheetId').value = appConfig.sheetId || '';
+                if (appConfig.apiKey && appConfig.sheetId) enableButtons();
             }
         }
 
         function setupEvents() {
-            document.getElementById('setupBtn').onclick = function() { showSetup(true); };
+            document.getElementById('setupBtn').onclick = () => showSetup(true);
             document.getElementById('demoBtn').onclick = toggleDemo;
             document.getElementById('saveBtn').onclick = saveConfig;
             document.getElementById('testBtn').onclick = testConnection;
-            document.getElementById('cancelBtn').onclick = function() { showSetup(false); };
+            document.getElementById('cancelBtn').onclick = () => showSetup(false);
             document.getElementById('qrBtn').onclick = generateQR;
+            document.getElementById('initBtn').onclick = initialize;
+            document.getElementById('refreshBtn').onclick = refresh;
         }
 
         function showAlert(msg, type) {
             const alert = document.getElementById('alert');
             alert.textContent = msg;
-            alert.className = 'alert ' + type;
+            alert.className = `alert ${type}`;
             alert.style.display = 'block';
-            setTimeout(function() { alert.style.display = 'none'; }, 5000);
+            setTimeout(() => alert.style.display = 'none', 4000);
         }
 
         function showSetup(show) {
@@ -253,7 +204,7 @@
             document.getElementById('mainPanel').classList.toggle('hidden', isDemoMode);
             document.getElementById('setupForm').classList.add('hidden');
             if (isDemoMode) {
-                document.getElementById('qrBtn').disabled = false;
+                enableButtons();
                 showAlert('Demo mode activated!', 'info');
             }
         }
@@ -262,7 +213,6 @@
             isDemoMode = false;
             document.getElementById('demoData').classList.add('hidden');
             document.getElementById('mainPanel').classList.remove('hidden');
-            showAlert('Demo mode exited', 'info');
         }
 
         function saveConfig() {
@@ -274,83 +224,88 @@
                 return;
             }
 
-            appConfig = { apiKey: apiKey, sheetId: sheetId };
+            appConfig = { apiKey, sheetId };
             localStorage.setItem('dwConfig', JSON.stringify(appConfig));
-            showAlert('Configuration saved successfully!', 'success');
+            showAlert('Configuration saved!', 'success');
             showSetup(false);
-            document.getElementById('qrBtn').disabled = false;
+            enableButtons();
         }
 
         function testConnection() {
             const sheetId = document.getElementById('sheetId').value.trim();
             if (!sheetId) {
-                showAlert('Please enter Sheet ID first', 'error');
+                showAlert('Enter Sheet ID first', 'error');
                 return;
             }
 
             showAlert('Testing connection...', 'info');
-            const csvUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/export?format=csv';
-            
-            fetch(csvUrl)
-                .then(function(response) {
-                    if (!response.ok) throw new Error('Failed to access sheet');
-                    return response.text();
-                })
-                .then(function(csv) {
+            fetch(`https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`)
+                .then(r => r.ok ? r.text() : Promise.reject('Failed'))
+                .then(csv => {
                     const lines = csv.split('\n').length - 1;
-                    showAlert('✅ Connection successful! Found ' + lines + ' data rows.', 'success');
+                    showAlert(`✅ Success! Found ${lines} data rows.`, 'success');
                 })
-                .catch(function() {
-                    showAlert('❌ Connection failed. Check Sheet ID and ensure sheet is published to web.', 'error');
-                });
+                .catch(() => showAlert('❌ Connection failed. Check Sheet ID and make sure sheet is published.', 'error'));
         }
+
+        function enableButtons() {
+            document.getElementById('qrBtn').disabled = false;
+            document.getElementById('refreshBtn').disabled = false;
+        }
+
+        function initialize() {
+            if (!appConfig.apiKey || !appConfig.sheetId) {
+                showAlert('Configure settings first', 'warning');
+                return;
+            }
+            showAlert('Initializing...', 'info');
+            loadMap();
+        }
+
+        function loadMap() {
+            if (appConfig.apiKey) {
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${appConfig.apiKey}&callback=initMap`;
+                document.head.appendChild(script);
+            }
+        }
+
+        window.initMap = function() {
+            const map = new google.maps.Map(document.getElementById('map'), {
+                zoom: 10,
+                center: { lat: 34.0522, lng: -118.2437 }
+            });
+            showAlert('Map loaded successfully!', 'success');
+        };
 
         function generateQR() {
             const url = isDemoMode ? 
                 'https://maps.google.com/maps?q=34.0522,-118.2437' :
                 'https://maps.google.com/maps?q=stores+near+me';
             
-            const title = isDemoMode ? '📱 Demo QR Code' : '📱 Location QR Code';
-            const desc = isDemoMode ? 
-                'Demo location in downtown Los Angeles' : 
-                'Your configured locations';
-            
-            showQRModal(title, url, desc);
+            showQRModal('📱 Location QR', url, isDemoMode ? 'Demo location' : 'Your locations');
         }
 
         function generateDemoQR() {
-            showQRModal('📱 Demo QR Code', 'https://maps.google.com/maps?q=34.0522,-118.2437', 'Downtown LA demo location - scan with your phone camera');
+            showQRModal('📱 Demo QR', 'https://maps.google.com/maps?q=34.0522,-118.2437', 'Downtown LA demo location');
         }
 
         function showQRModal(title, url, desc) {
             document.getElementById('qrTitle').textContent = title;
-            document.getElementById('qrDesc').innerHTML = '<p style="color: #666;">' + desc + '</p><a href="' + url + '" target="_blank" class="btn btn-secondary" style="margin-top: 10px;">📍 Open in Google Maps</a>';
+            document.getElementById('qrDesc').innerHTML = `<p>${desc}</p><a href="${url}" target="_blank" class="btn btn-secondary">Open in Maps</a>`;
             
             const qrDiv = document.getElementById('qrCode');
             qrDiv.innerHTML = '';
             
             if (typeof QRCode !== 'undefined') {
-                try {
-                    new QRCode(qrDiv, {
-                        text: url,
-                        width: 256,
-                        height: 256,
-                        colorDark: '#000000',
-                        colorLight: '#ffffff',
-                        correctLevel: QRCode.CorrectLevel.L
-                    });
-                    
-                    setTimeout(function() {
-                        const tips = document.createElement('div');
-                        tips.style.cssText = 'margin-top: 15px; padding: 10px; background: #f0f8ff; border-radius: 5px; font-size: 14px; color: #333;';
-                        tips.innerHTML = '<strong>📱 Scanning Tips:</strong><br>• Open your phone camera app<br>• Point at QR code 8-12 inches away<br>• Tap notification to open Google Maps';
-                        qrDiv.appendChild(tips);
-                    }, 100);
-                } catch (error) {
-                    qrDiv.innerHTML = '<p style="color: red;">Error generating QR code</p>';
-                }
+                new QRCode(qrDiv, {
+                    text: url,
+                    width: 256,
+                    height: 256,
+                    correctLevel: QRCode.CorrectLevel.L
+                });
             } else {
-                qrDiv.innerHTML = '<p style="color: red;">QR Code library not loaded</p>';
+                qrDiv.innerHTML = '<p>QR library not loaded</p>';
             }
             
             document.getElementById('qrModal').style.display = 'flex';
@@ -360,6 +315,11 @@
             document.getElementById('qrModal').style.display = 'none';
         }
 
+        function refresh() {
+            showAlert(isDemoMode ? 'Demo refreshed!' : 'Data refreshed!', 'success');
+        }
+
+        // Global functions
         window.generateDemoQR = generateDemoQR;
         window.exitDemo = exitDemo;
         window.closeQR = closeQR;
