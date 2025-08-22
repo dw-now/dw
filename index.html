@@ -342,26 +342,92 @@
         }
 
         function testConnection() {
+            const apiKey = document.getElementById('apiKey').value.trim();
             const sheetId = document.getElementById('sheetId').value.trim();
+            
+            console.log('Testing connection - API Key:', apiKey ? 'provided' : 'missing', 'Sheet ID:', sheetId ? 'provided' : 'missing');
+            
             if (!sheetId) {
                 showAlert('Please enter Sheet ID first', 'error');
                 return;
             }
 
-            showAlert('Testing connection...', 'info');
+            showAlert('Testing Google Sheets connection...', 'info');
             const csvUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/export?format=csv';
+            
+            console.log('Testing URL:', csvUrl);
             
             fetch(csvUrl)
                 .then(function(response) {
-                    if (!response.ok) throw new Error('Failed to access sheet');
+                    console.log('Sheet response status:', response.status, response.statusText);
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status + ' - Failed to access sheet. Make sure it\'s published to web as CSV.');
+                    }
                     return response.text();
                 })
                 .then(function(csv) {
-                    const lines = csv.split('\n').length - 1;
-                    showAlert('✅ Success! Found ' + lines + ' data rows.', 'success');
+                    console.log('CSV received, length:', csv.length);
+                    console.log('CSV preview:', csv.substring(0, 200));
+                    
+                    if (csv.includes('<!DOCTYPE html>')) {
+                        throw new Error('Sheet returned HTML instead of CSV. Make sure it\'s published as CSV format, not web page.');
+                    }
+                    
+                    const lines = csv.trim().split('\n');
+                    if (lines.length < 2) {
+                        throw new Error('Sheet appears empty or has no data rows.');
+                    }
+                    
+                    // Show preview of data
+                    const headers = lines[0];
+                    const dataCount = lines.length - 1;
+                    
+                    console.log('Headers:', headers);
+                    console.log('Data rows:', dataCount);
+                    
+                    showAlert('✅ Google Sheets connection successful! Found ' + dataCount + ' data rows. Headers: ' + headers, 'success');
+                    
+                    // Also test API key if provided
+                    if (apiKey && apiKey.length > 20) {
+                        testGoogleMapsAPI(apiKey);
+                    } else {
+                        showAlert('⚠️ Google Maps API key not provided or too short. Add a valid API key to test Maps integration.', 'warning');
+                    }
                 })
-                .catch(function() {
-                    showAlert('❌ Failed. Check Sheet ID and ensure sheet is published.', 'error');
+                .catch(function(error) {
+                    console.error('Test connection error:', error);
+                    showAlert('❌ Google Sheets test failed: ' + error.message, 'error');
+                });
+        }
+
+        function testGoogleMapsAPI(apiKey) {
+            console.log('Testing Google Maps API...');
+            
+            // Test Google Maps API with a simple geocoding request
+            const testUrl = 'https://maps.googleapis.com/maps/api/geocode/json?address=1600+Amphitheatre+Parkway,+Mountain+View,+CA&key=' + apiKey;
+            
+            fetch(testUrl)
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(data) {
+                    console.log('Maps API response:', data);
+                    
+                    if (data.status === 'REQUEST_DENIED') {
+                        throw new Error('Google Maps API key is invalid or restricted. Make sure Maps JavaScript API and Geocoding API are enabled.');
+                    } else if (data.status === 'OVER_QUERY_LIMIT') {
+                        throw new Error('Google Maps API quota exceeded.');
+                    } else if (data.error_message) {
+                        throw new Error('Google Maps API error: ' + data.error_message);
+                    } else if (data.status === 'OK') {
+                        showAlert('✅ Google Maps API key is working correctly! Both services tested successfully.', 'success');
+                    } else {
+                        showAlert('⚠️ Google Maps API responded with status: ' + data.status, 'warning');
+                    }
+                })
+                .catch(function(error) {
+                    console.error('Maps API test error:', error);
+                    showAlert('⚠️ Google Maps API test failed: ' + error.message + ' (Sheets connection still works)', 'warning');
                 });
         }
 
@@ -388,51 +454,7 @@
         let isGoogleMapsLoaded = false;
         let isGoogleMapsLoading = false;
 
-        function loadGoogleMaps() {
-            console.log('loadGoogleMaps called');
-            
-            // Prevent multiple loads
-            if (isGoogleMapsLoaded) {
-                console.log('Google Maps already loaded, calling initGoogleMap directly');
-                initGoogleMap();
-                return;
-            }
-            
-            if (isGoogleMapsLoading) {
-                console.log('Google Maps already loading, please wait...');
-                return;
-            }
-            
-            isGoogleMapsLoading = true;
-            console.log('Loading Google Maps for the first time...');
-            
-            // Only remove scripts if they exist
-            const existingScript = document.getElementById('google-maps-script');
-            if (existingScript) {
-                console.log('Removing existing Google Maps script');
-                existingScript.remove();
-            }
-            
-            const script = document.createElement('script');
-            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initGoogleMap&loading=async&v=3.55';
-            script.async = true;
-            script.defer = true;
-            script.id = 'google-maps-script';
-            script.onerror = function() {
-                console.error('Failed to load Google Maps script');
-                isGoogleMapsLoading = false;
-                showAlert('Failed to load Google Maps. Check your API key.', 'error');
-            };
-            script.onload = function() {
-                console.log('Google Maps script loaded successfully');
-                isGoogleMapsLoaded = true;
-                isGoogleMapsLoading = false;
-            };
-            
-            document.head.appendChild(script);
-        }
-        
-        // Define the callback function BEFORE loading the script
+        // Define the callback function FIRST before any loading happens
         window.initGoogleMap = function() {
             console.log('=== initGoogleMap called ===');
             
@@ -509,11 +531,60 @@
                     });
                 }
                 
+                isGoogleMapsLoaded = true;
+                isGoogleMapsLoading = false;
+                
             } catch (error) {
                 console.error('❌ Error creating map:', error);
                 showAlert('Failed to create map: ' + error.message, 'error');
+                isGoogleMapsLoading = false;
             }
         };
+
+        function loadGoogleMaps() {
+            console.log('loadGoogleMaps called');
+            
+            // Prevent multiple loads
+            if (isGoogleMapsLoaded) {
+                console.log('Google Maps already loaded, calling initGoogleMap directly');
+                if (window.initGoogleMap) {
+                    initGoogleMap();
+                }
+                return;
+            }
+            
+            if (isGoogleMapsLoading) {
+                console.log('Google Maps already loading, please wait...');
+                return;
+            }
+            
+            isGoogleMapsLoading = true;
+            console.log('Loading Google Maps for the first time...');
+            
+            // Only remove scripts if they exist
+            const existingScript = document.getElementById('google-maps-script');
+            if (existingScript) {
+                console.log('Removing existing Google Maps script');
+                existingScript.remove();
+            }
+            
+            // Use current version (not retired)
+            const script = document.createElement('script');
+            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initGoogleMap&loading=async';
+            script.async = true;
+            script.defer = true;
+            script.id = 'google-maps-script';
+            script.onerror = function() {
+                console.error('Failed to load Google Maps script');
+                isGoogleMapsLoading = false;
+                showAlert('Failed to load Google Maps. Check your API key and ensure Maps JavaScript API is enabled.', 'error');
+            };
+            script.onload = function() {
+                console.log('Google Maps script loaded successfully');
+            };
+            
+            document.head.appendChild(script);
+        }
 
         function addLocationsToMap() {
             if (!map || !sheetsData || sheetsData.length === 0) {
