@@ -388,47 +388,85 @@
         function loadGoogleMaps() {
             console.log('Loading Google Maps...');
             
+            // Remove ALL existing Google Maps scripts and clear the global
             const existingScripts = document.querySelectorAll('script[src*="maps.googleapis.com"]');
-            existingScripts.forEach(function(script) { script.remove(); });
+            existingScripts.forEach(function(script) { 
+                console.log('Removing existing script:', script.src);
+                script.remove(); 
+            });
             
-            const script = document.createElement('script');
-            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initGoogleMap&loading=async';
-            script.async = true;
-            script.defer = true;
-            script.onerror = function() {
-                showAlert('Failed to load Google Maps', 'error');
-            };
+            // Clear any existing Google Maps global object
+            if (window.google) {
+                console.log('Clearing existing Google Maps global object');
+                delete window.google;
+            }
             
-            document.head.appendChild(script);
+            // Clear any existing callback functions
+            if (window.initMap) {
+                delete window.initMap;
+            }
+            if (window.initGoogleMap) {
+                delete window.initGoogleMap;
+            }
+            
+            // Wait a moment for cleanup, then load new script
+            setTimeout(function() {
+                console.log('Loading fresh Google Maps script...');
+                
+                const script = document.createElement('script');
+                script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initGoogleMap&loading=async&v=3.55';
+                script.async = true;
+                script.defer = true;
+                script.id = 'google-maps-script';
+                script.onerror = function() {
+                    console.error('Failed to load Google Maps script');
+                    showAlert('Failed to load Google Maps. Check your API key.', 'error');
+                };
+                script.onload = function() {
+                    console.log('Google Maps script loaded successfully');
+                };
+                
+                document.head.appendChild(script);
+            }, 500);
         }
-
+        
+        // Define the callback function BEFORE loading the script
         window.initGoogleMap = function() {
-            console.log('initGoogleMap called');
+            console.log('=== initGoogleMap called ===');
+            console.log('Looking for map element with ID: mapDiv');
             
             const mapDiv = document.getElementById('mapDiv');
             const placeholder = document.getElementById('mapPlaceholder');
             
             console.log('Map div element:', mapDiv);
             console.log('Map div exists:', !!mapDiv);
+            console.log('All divs in document:', document.querySelectorAll('div'));
             
             if (!mapDiv) {
-                console.error('mapDiv element not found!');
-                showAlert('Map container not found', 'error');
+                console.error('ERROR: mapDiv element not found!');
+                console.log('Available elements with IDs:', Array.from(document.querySelectorAll('[id]')).map(el => el.id));
+                showAlert('Map container not found. Please refresh the page.', 'error');
                 return;
             }
+            
+            // Ensure the map div is visible and has proper dimensions
+            mapDiv.style.width = '100%';
+            mapDiv.style.height = '100%';
+            mapDiv.style.minHeight = '400px';
             
             if (placeholder) {
                 placeholder.style.display = 'none';
             }
             
             try {
+                console.log('Creating Google Map...');
                 map = new google.maps.Map(mapDiv, {
                     zoom: 10,
                     center: { lat: 34.0522, lng: -118.2437 },
                     mapTypeId: 'roadmap'
                 });
                 
-                console.log('Map created successfully');
+                console.log('✅ Map created successfully:', map);
                 showAlert('Map loaded successfully!', 'success');
                 document.getElementById('status').textContent = 'Map ready';
                 
@@ -441,6 +479,7 @@
                         map.setCenter(userLocation);
                         map.setZoom(12);
                         
+                        // Add user location circle
                         new google.maps.Circle({
                             strokeColor: '#4285f4',
                             strokeOpacity: 0.8,
@@ -453,11 +492,15 @@
                         });
                         
                         showAlert('Map loaded with your location!', 'success');
+                        document.getElementById('status').textContent = 'Map ready - showing your location';
+                    }, function(error) {
+                        console.log('Geolocation failed:', error);
+                        showAlert('Using default location', 'info');
                     });
                 }
                 
             } catch (error) {
-                console.error('Error creating map:', error);
+                console.error('❌ Error creating map:', error);
                 showAlert('Failed to create map: ' + error.message, 'error');
             }
         };
