@@ -287,14 +287,21 @@
                 script.remove();
             });
             
+            // Clean up existing Google Maps objects
+            if (window.google && window.google.maps) {
+                delete window.google;
+            }
+            
             const script = document.createElement('script');
-            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initMap&loading=async';
+            script.src = 'https://maps.googleapis.com/maps/api/js?key=' + appConfig.apiKey + '&callback=initMap&libraries=places&loading=async';
             script.async = true;
             script.defer = true;
             script.onerror = function() {
-                showAlert('Failed to load Google Maps. Check your API key.', 'error');
+                showAlert('Failed to load Google Maps. Check your API key and ensure Maps JavaScript API is enabled.', 'error');
+                document.getElementById('status').textContent = 'Map loading failed';
             };
             
+            console.log('Loading Google Maps with API key:', appConfig.apiKey.substring(0, 10) + '...');
             document.head.appendChild(script);
         }
 
@@ -484,26 +491,75 @@
         }
 
         function testConnection() {
+            const apiKey = document.getElementById('apiKey').value.trim();
             const sheetId = document.getElementById('sheetId').value.trim();
+            
             if (!sheetId) {
                 showAlert('Please enter Sheet ID first', 'error');
                 return;
             }
 
-            showAlert('Testing connection...', 'info');
+            showAlert('Testing Google Sheets connection...', 'info');
             const csvUrl = 'https://docs.google.com/spreadsheets/d/' + sheetId + '/export?format=csv';
             
             fetch(csvUrl)
                 .then(function(response) {
-                    if (!response.ok) throw new Error('Failed to access sheet');
+                    console.log('Response status:', response.status);
+                    if (!response.ok) {
+                        throw new Error('HTTP ' + response.status + ' - Failed to access sheet. Make sure it\'s published to web.');
+                    }
                     return response.text();
                 })
                 .then(function(csv) {
-                    const lines = csv.split('\n').length - 1;
-                    showAlert('✅ Connection successful! Found ' + lines + ' data rows.', 'success');
+                    console.log('CSV received, length:', csv.length);
+                    
+                    if (csv.includes('<!DOCTYPE html>')) {
+                        throw new Error('Sheet returned HTML instead of CSV. Make sure it\'s published as CSV format.');
+                    }
+                    
+                    const lines = csv.trim().split('\n');
+                    if (lines.length < 2) {
+                        throw new Error('Sheet appears empty or has no data rows.');
+                    }
+                    
+                    // Show preview of data
+                    const headers = lines[0];
+                    const sampleRow = lines[1] || '';
+                    
+                    showAlert('✅ Connection successful! Found ' + (lines.length - 1) + ' data rows. Headers: ' + headers, 'success');
+                    
+                    // Also test API key if provided
+                    if (apiKey && apiKey.length > 20) {
+                        testGoogleMapsAPI(apiKey);
+                    }
                 })
-                .catch(function() {
-                    showAlert('❌ Connection failed. Check Sheet ID and ensure sheet is published to web.', 'error');
+                .catch(function(error) {
+                    console.error('Test connection error:', error);
+                    showAlert('❌ Connection failed: ' + error.message, 'error');
+                });
+        }
+
+        function testGoogleMapsAPI(apiKey) {
+            // Test Google Maps API with a simple geocoding request
+            const testUrl = 'https://maps.googleapis.com/maps/api/geocode/json?address=1600+Amphitheatre+Parkway,+Mountain+View,+CA&key=' + apiKey;
+            
+            fetch(testUrl)
+                .then(function(response) {
+                    return response.json();
+                })
+                .then(function(data) {
+                    if (data.status === 'REQUEST_DENIED') {
+                        throw new Error('Google Maps API key is invalid or restricted.');
+                    } else if (data.status === 'OVER_QUERY_LIMIT') {
+                        throw new Error('Google Maps API quota exceeded.');
+                    } else if (data.error_message) {
+                        throw new Error('Google Maps API error: ' + data.error_message);
+                    } else {
+                        showAlert('✅ Google Maps API key is working correctly!', 'success');
+                    }
+                })
+                .catch(function(error) {
+                    showAlert('⚠️ Google Maps API test failed: ' + error.message, 'warning');
                 });
         }
 
