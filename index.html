@@ -776,11 +776,97 @@
                 return;
             }
             
-            const url = sheetsData.length > 0 ? 
-                'https://maps.google.com/maps?q=' + encodeURIComponent(sheetsData[0].address) :
-                'https://maps.google.com/maps?q=stores+near+me';
+            if (!sheetsData || sheetsData.length === 0) {
+                const url = 'https://maps.google.com/maps?q=stores+near+me';
+                showQRModal('📱 Sample QR Code', url, 'No location data loaded. Initialize the app first to load your real data.');
+                return;
+            }
             
-            showQRModal('📱 Location QR', url, 'QR code for your locations');
+            console.log('Generating QR for', sheetsData.length, 'locations');
+            
+            // Get selected range
+            const rangeValue = document.getElementById('rangeSelector').value;
+            let locationsToInclude = sheetsData;
+            
+            // Filter by range if not "all"
+            if (rangeValue !== 'all') {
+                const maxDistance = parseFloat(rangeValue);
+                locationsToInclude = sheetsData.filter(function(location) {
+                    // If we don't have distance calculated, include all locations
+                    return !location.distance || location.distance <= maxDistance;
+                });
+            }
+            
+            console.log('Locations after range filter:', locationsToInclude.length);
+            
+            if (locationsToInclude.length === 0) {
+                showAlert('No locations found within selected range', 'warning');
+                return;
+            }
+            
+            let mapsUrl = '';
+            let description = '';
+            
+            if (locationsToInclude.length === 1) {
+                // Single location - direct navigation
+                const location = locationsToInclude[0];
+                mapsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(location.address) + '&travelmode=driving';
+                description = 'Navigate directly to: ' + location.name;
+            } else if (locationsToInclude.length <= 5) {
+                // Multiple locations - create search query with all locations
+                const searchTerms = locationsToInclude.map(function(location) {
+                    // Use business name + address for better recognition
+                    return location.name + ' ' + location.address;
+                });
+                
+                const searchQuery = searchTerms.join(' OR ');
+                mapsUrl = 'https://www.google.com/maps/search/' + encodeURIComponent(searchQuery);
+                description = 'Search for all ' + locationsToInclude.length + ' locations';
+            } else {
+                // Too many locations - take closest ones if distance is available, otherwise first 5
+                let selectedLocations;
+                if (locationsToInclude.some(loc => loc.distance)) {
+                    selectedLocations = locationsToInclude
+                        .sort(function(a, b) { return (a.distance || 999) - (b.distance || 999); })
+                        .slice(0, 5);
+                } else {
+                    selectedLocations = locationsToInclude.slice(0, 5);
+                }
+                
+                const searchTerms = selectedLocations.map(function(location) {
+                    return location.name + ' ' + location.address;
+                });
+                
+                const searchQuery = searchTerms.join(' OR ');
+                mapsUrl = 'https://www.google.com/maps/search/' + encodeURIComponent(searchQuery);
+                description = 'Search for 5 closest locations (out of ' + locationsToInclude.length + ' total)';
+            }
+            
+            // Ensure URL isn't too long for QR code (limit ~2000 characters)
+            if (mapsUrl.length > 2000) {
+                console.warn('URL too long for QR code, falling back to first location');
+                const firstLocation = locationsToInclude[0];
+                mapsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(firstLocation.address);
+                description = 'URL too long for QR - showing first location: ' + firstLocation.name;
+            }
+            
+            console.log('Generated QR URL:', mapsUrl);
+            console.log('URL length:', mapsUrl.length);
+            
+            const rangeText = rangeValue === 'all' ? 'All' : rangeValue + ' Mile';
+            const title = '📱 ' + rangeText + ' Range QR Code';
+            
+            // Enhanced description with location list
+            const fullDescription = description + '<br><br><strong>Included Locations:</strong><ul style="text-align: left; margin: 10px 0;">' +
+                locationsToInclude.slice(0, 10).map(function(loc) {
+                    return '<li><strong>' + loc.name + '</strong><br>' + 
+                           '<small style="color: #666;">' + loc.address + ' (Available: ' + loc.count + ')</small></li>';
+                }).join('') +
+                (locationsToInclude.length > 10 ? '<li><em>... and ' + (locationsToInclude.length - 10) + ' more locations</em></li>' : '') +
+                '</ul>';
+            
+            showQRModal(title, mapsUrl, fullDescription);
+            showAlert('QR code generated for ' + locationsToInclude.length + ' locations!', 'success');
         }
 
         function generateDemoQR() {
