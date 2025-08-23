@@ -792,7 +792,6 @@
             if (rangeValue !== 'all') {
                 const maxDistance = parseFloat(rangeValue);
                 locationsToInclude = sheetsData.filter(function(location) {
-                    // If we don't have distance calculated, include all locations
                     return !location.distance || location.distance <= maxDistance;
                 });
             }
@@ -810,63 +809,76 @@
             if (locationsToInclude.length === 1) {
                 // Single location - direct navigation
                 const location = locationsToInclude[0];
-                mapsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(location.address) + '&travelmode=driving';
-                description = 'Navigate directly to: ' + location.name;
-            } else if (locationsToInclude.length <= 5) {
-                // Multiple locations - create search query with all locations
-                const searchTerms = locationsToInclude.map(function(location) {
-                    // Use business name + address for better recognition
-                    return location.name + ' ' + location.address;
-                });
-                
-                const searchQuery = searchTerms.join(' OR ');
-                mapsUrl = 'https://www.google.com/maps/search/' + encodeURIComponent(searchQuery);
-                description = 'Search for all ' + locationsToInclude.length + ' locations';
+                mapsUrl = 'https://maps.google.com/maps?q=' + encodeURIComponent(location.address);
+                description = 'Navigate to: ' + location.name;
             } else {
-                // Too many locations - take closest ones if distance is available, otherwise first 5
-                let selectedLocations;
-                if (locationsToInclude.some(loc => loc.distance)) {
-                    selectedLocations = locationsToInclude
-                        .sort(function(a, b) { return (a.distance || 999) - (b.distance || 999); })
-                        .slice(0, 5);
+                // Multiple locations - use coordinate-based approach for better mobile support
+                // Find the center point of all locations
+                if (locationsToInclude.length <= 3) {
+                    // For 2-3 locations, create a simple search that works better on mobile
+                    const locationNames = locationsToInclude.map(function(loc) { return loc.name; });
+                    const searchTerm = locationNames.join(' ');
+                    
+                    // Add the city from first address to help with search context
+                    const firstAddress = locationsToInclude[0].address;
+                    const cityMatch = firstAddress.match(/, ([^,]+), [A-Z]{2}/);
+                    const city = cityMatch ? cityMatch[1] : 'Inglewood';
+                    
+                    mapsUrl = 'https://maps.google.com/maps?q=' + encodeURIComponent(searchTerm + ' near ' + city + ', CA');
+                    description = 'Search for your locations near ' + city + ', CA';
                 } else {
-                    selectedLocations = locationsToInclude.slice(0, 5);
+                    // For 4+ locations, create a map centered on the area
+                    // Use the first location's area as the search center
+                    const firstAddress = locationsToInclude[0].address;
+                    const cityMatch = firstAddress.match(/, ([^,]+), [A-Z]{2} \d{5}/);
+                    const cityAndZip = cityMatch ? cityMatch[0].substring(2) : 'Inglewood, CA 90301';
+                    
+                    // Create a search for the business type in that area
+                    const businessName = locationsToInclude[0].name;
+                    const businessType = businessName.toLowerCase().includes('store') ? 'stores' : 
+                                       businessName.toLowerCase().includes('location') ? 'locations' :
+                                       businessName.split(' ')[0]; // Use first word of business name
+                    
+                    mapsUrl = 'https://maps.google.com/maps?q=' + encodeURIComponent(businessType + ' in ' + cityAndZip);
+                    description = 'Search for locations in ' + cityAndZip;
                 }
-                
-                const searchTerms = selectedLocations.map(function(location) {
-                    return location.name + ' ' + location.address;
-                });
-                
-                const searchQuery = searchTerms.join(' OR ');
-                mapsUrl = 'https://www.google.com/maps/search/' + encodeURIComponent(searchQuery);
-                description = 'Search for 5 closest locations (out of ' + locationsToInclude.length + ' total)';
-            }
-            
-            // Ensure URL isn't too long for QR code (limit ~2000 characters)
-            if (mapsUrl.length > 2000) {
-                console.warn('URL too long for QR code, falling back to first location');
-                const firstLocation = locationsToInclude[0];
-                mapsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + encodeURIComponent(firstLocation.address);
-                description = 'URL too long for QR - showing first location: ' + firstLocation.name;
             }
             
             console.log('Generated QR URL:', mapsUrl);
             console.log('URL length:', mapsUrl.length);
             
             const rangeText = rangeValue === 'all' ? 'All' : rangeValue + ' Mile';
-            const title = '📱 ' + rangeText + ' Range QR Code';
+            const title = '📱 ' + rangeText + ' Range QR Code (' + locationsToInclude.length + ' locations)';
             
-            // Enhanced description with location list
-            const fullDescription = description + '<br><br><strong>Included Locations:</strong><ul style="text-align: left; margin: 10px 0;">' +
-                locationsToInclude.slice(0, 10).map(function(loc) {
-                    return '<li><strong>' + loc.name + '</strong><br>' + 
-                           '<small style="color: #666;">' + loc.address + ' (Available: ' + loc.count + ')</small></li>';
+            // Create a more helpful description
+            const fullDescription = '<div style="text-align: left;">' +
+                '<p style="margin-bottom: 15px;"><strong>QR Code Strategy:</strong><br>' +
+                (locationsToInclude.length === 1 ? 
+                    'Direct navigation to your location' :
+                    'Opens Google Maps search that will help you find all ' + locationsToInclude.length + ' locations in your area'
+                ) + '</p>' +
+                
+                '<p style="margin-bottom: 15px;"><strong>📍 Your Locations:</strong></p>' +
+                '<div style="max-height: 200px; overflow-y: auto; background: #f8f9fa; padding: 10px; border-radius: 5px; margin-bottom: 15px;">' +
+                locationsToInclude.map(function(loc, index) {
+                    return '<div style="margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid #eee;">' +
+                           '<strong>' + (index + 1) + '. ' + loc.name + '</strong><br>' + 
+                           '<small style="color: #666;">' + loc.address + '</small><br>' +
+                           '<small style="color: ' + (loc.count > 0 ? '#4CAF50' : '#999') + ';"><strong>Available: ' + loc.count + '</strong></small>' +
+                           '</div>';
                 }).join('') +
-                (locationsToInclude.length > 10 ? '<li><em>... and ' + (locationsToInclude.length - 10) + ' more locations</em></li>' : '') +
-                '</ul>';
+                '</div>' +
+                
+                '<p style="margin-bottom: 10px;"><strong>💡 Scanning Tips:</strong></p>' +
+                '<ul style="font-size: 14px; color: #666; margin: 0; padding-left: 20px;">' +
+                '<li>After scanning, you may need to search for specific location names</li>' +
+                '<li>Use the address list above to navigate to each location</li>' +
+                '<li>Or ask Google Assistant: "Navigate to [location name] on [street name]"</li>' +
+                '</ul>' +
+                '</div>';
             
             showQRModal(title, mapsUrl, fullDescription);
-            showAlert('QR code generated for ' + locationsToInclude.length + ' locations!', 'success');
+            showAlert('QR code generated! Includes ' + locationsToInclude.length + ' locations.', 'success');
         }
 
         function generateDemoQR() {
