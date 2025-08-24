@@ -631,31 +631,36 @@
                     <h3 style="color: #2d3748; margin-bottom: 15px;">📱 How it Works:</h3>
                     <ol style="color: #718096; line-height: 1.8; padding-left: 20px;">
                         <li>User scans the QR code with their phone camera</li>
-                        <li>Google Maps app opens automatically</li>
-                        <li>Shows directions to all your locations (up to 10)</li>
-                        <li>User can navigate between locations</li>
-                        <li>At each location, they can open Venmo for payment</li>
+                        <li>Google Maps app opens showing all location options</li>
+                        <li>User can see all locations on the map</li>
+                        <li>User chooses which location to visit</li>
+                        <li>Taps on location for details and navigation</li>
+                        <li>Can navigate to chosen location</li>
                     </ol>
                     
                     <div style="margin-top: 20px; padding: 15px; background: #fff5f5; border-radius: 8px; border-left: 4px solid #fc8181;">
-                        <h4 style="color: #c53030; margin-bottom: 10px;">⚠️ Important Limitations (No Backend):</h4>
+                        <h4 style="color: #c53030; margin-bottom: 10px;">⚠️ Important: Google Maps Limitations</h4>
                         <ul style="color: #742a2a; line-height: 1.6; padding-left: 20px; font-size: 14px;">
-                            <li><strong>No custom yellow markers</strong> - Google Maps doesn't support custom colors via URL</li>
-                            <li><strong>Maximum 10 locations</strong> - URL length limits</li>
-                            <li><strong>No automatic counter updates</strong> - Requires backend for tracking</li>
-                            <li><strong>No automatic Venmo integration</strong> - Manual payment process</li>
+                            <li><strong>Search Results</strong> - Google Maps will search for your locations by name</li>
+                            <li><strong>May not show all</strong> - If names aren't unique or don't exist in Google's database</li>
+                            <li><strong>No custom markers</strong> - Can't make them yellow via URL</li>
                         </ul>
                     </div>
 
-                    <div style="margin-top: 20px; padding: 15px; background: #f0fff4; border-radius: 8px; border-left: 4px solid #68d391;">
-                        <h4 style="color: #22543d; margin-bottom: 10px;">✅ What Works Without Backend:</h4>
-                        <ul style="color: #22543d; line-height: 1.6; padding-left: 20px; font-size: 14px;">
-                            <li>QR code opens Google Maps directly</li>
-                            <li>Shows route to all locations (as waypoints)</li>
-                            <li>Turn-by-turn navigation</li>
-                            <li>Manual counter updates in dashboard</li>
-                            <li>Data saved locally in your browser</li>
-                        </ul>
+                    <div style="margin-top: 20px; padding: 15px; background: #e6fffa; border-radius: 8px; border-left: 4px solid #4fd1c5;">
+                        <h4 style="color: #234e52; margin-bottom: 10px;">💡 Best Solution: Google My Maps</h4>
+                        <ol style="color: #234e52; line-height: 1.6; padding-left: 20px; font-size: 14px;">
+                            <li>Go to <a href="https://www.google.com/maps/d/" target="_blank">Google My Maps</a></li>
+                            <li>Create a new map (it's free)</li>
+                            <li>Add all your locations as markers</li>
+                            <li>Customize markers to yellow color</li>
+                            <li>Make the map public</li>
+                            <li>Copy the sharing link</li>
+                            <li>Use that link to create your QR code</li>
+                        </ol>
+                        <p style="color: #234e52; margin-top: 10px; font-size: 14px;">
+                            This gives you <strong>complete control</strong> over how locations appear!
+                        </p>
                     </div>
                     
                     <h4 style="color: #4a5568; margin-top: 20px; margin-bottom: 10px;">Generated URL:</h4>
@@ -1117,42 +1122,49 @@ app.get('/map', async (req, res) => {
                 return;
             }
 
-            // Generate Google Maps URL
+            // Generate Google Maps URL to show ALL locations as separate markers
             let mapsUrl = '';
             
-            // For multiple locations, use Google My Maps or create a directions route
             if (locations.length === 1) {
-                // Single location - simple and direct
+                // Single location - simple search
                 const loc = locations[0];
                 if (loc.coordinates) {
                     mapsUrl = `https://www.google.com/maps/search/?api=1&query=${loc.coordinates.lat},${loc.coordinates.lng}`;
                 } else {
                     mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc.address)}`;
                 }
-            } else if (locations.length <= 10) {
-                // Multiple locations (up to 10) - use directions mode for best compatibility
-                mapsUrl = 'https://www.google.com/maps/dir/';
-                
-                // Add current location as starting point
-                mapsUrl += 'Current+Location/';
-                
-                // Add each location as a waypoint
-                locations.forEach((loc, index) => {
-                    if (loc.address) {
-                        mapsUrl += `${encodeURIComponent(loc.address)}/`;
-                    } else if (loc.coordinates) {
-                        mapsUrl += `${loc.coordinates.lat},${loc.coordinates.lng}/`;
-                    }
-                });
-                
-                // Add travel mode parameter
-                mapsUrl += '?travelmode=driving';
             } else {
-                // Too many locations - create a search query for the first location
-                // and notify user
-                const loc = locations[0];
-                mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc.address)}`;
-                showMessage('Note: Google Maps URL limit reached. Showing first location only. For all locations, use fewer than 10 locations or implement backend solution.', 'warning');
+                // Multiple locations - show as nearby places/search results
+                // Create a search query that will show all locations in the area
+                const mapMode = settings.mapMode || 'search';
+                
+                if (mapMode === 'list') {
+                    // Create a Google Maps list URL (requires Google My Maps)
+                    // For now, search for all locations
+                    const searchQuery = locations.map(loc => loc.name).join('+OR+');
+                    mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
+                } else {
+                    // Default: Search for multiple locations
+                    // This will show all locations that match the search
+                    const allNames = locations.map(loc => loc.name + ' ' + loc.address).join(' OR ');
+                    mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(allNames)}`;
+                    
+                    // Alternative: If all locations are in same area, use a central point
+                    if (locations.every(loc => loc.coordinates)) {
+                        // Calculate center point
+                        let avgLat = 0, avgLng = 0;
+                        locations.forEach(loc => {
+                            avgLat += loc.coordinates.lat;
+                            avgLng += loc.coordinates.lng;
+                        });
+                        avgLat /= locations.length;
+                        avgLng /= locations.length;
+                        
+                        // Create search near center point for all location names
+                        const names = locations.map(loc => `"${loc.name}"`).join(' OR ');
+                        mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(names)}/@${avgLat},${avgLng},14z`;
+                    }
+                }
             }
             
             // Create QR code
