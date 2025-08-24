@@ -632,12 +632,31 @@
                     <ol style="color: #718096; line-height: 1.8; padding-left: 20px;">
                         <li>User scans the QR code with their phone camera</li>
                         <li>Google Maps app opens automatically</li>
-                        <li>All locations appear as yellow markers with white borders</li>
-                        <li>User taps a marker to see location details</li>
-                        <li>User can navigate to the location</li>
-                        <li>Upon arrival, Venmo link opens with pre-filled note</li>
-                        <li>Counter increments after payment completion</li>
+                        <li>Shows directions to all your locations (up to 10)</li>
+                        <li>User can navigate between locations</li>
+                        <li>At each location, they can open Venmo for payment</li>
                     </ol>
+                    
+                    <div style="margin-top: 20px; padding: 15px; background: #fff5f5; border-radius: 8px; border-left: 4px solid #fc8181;">
+                        <h4 style="color: #c53030; margin-bottom: 10px;">⚠️ Important Limitations (No Backend):</h4>
+                        <ul style="color: #742a2a; line-height: 1.6; padding-left: 20px; font-size: 14px;">
+                            <li><strong>No custom yellow markers</strong> - Google Maps doesn't support custom colors via URL</li>
+                            <li><strong>Maximum 10 locations</strong> - URL length limits</li>
+                            <li><strong>No automatic counter updates</strong> - Requires backend for tracking</li>
+                            <li><strong>No automatic Venmo integration</strong> - Manual payment process</li>
+                        </ul>
+                    </div>
+
+                    <div style="margin-top: 20px; padding: 15px; background: #f0fff4; border-radius: 8px; border-left: 4px solid #68d391;">
+                        <h4 style="color: #22543d; margin-bottom: 10px;">✅ What Works Without Backend:</h4>
+                        <ul style="color: #22543d; line-height: 1.6; padding-left: 20px; font-size: 14px;">
+                            <li>QR code opens Google Maps directly</li>
+                            <li>Shows route to all locations (as waypoints)</li>
+                            <li>Turn-by-turn navigation</li>
+                            <li>Manual counter updates in dashboard</li>
+                            <li>Data saved locally in your browser</li>
+                        </ul>
+                    </div>
                     
                     <h4 style="color: #4a5568; margin-top: 20px; margin-bottom: 10px;">Generated URL:</h4>
                     <div class="qr-url" id="qr-url-text">
@@ -1098,40 +1117,42 @@ app.get('/map', async (req, res) => {
                 return;
             }
 
-            // Generate Google Maps URL based on settings
+            // Generate Google Maps URL
             let mapsUrl = '';
-            const mapMode = settings.mapMode || 'standard';
             
-            if (mapMode === 'directions') {
-                // Multi-stop directions URL
+            // For multiple locations, use Google My Maps or create a directions route
+            if (locations.length === 1) {
+                // Single location - simple and direct
+                const loc = locations[0];
+                if (loc.coordinates) {
+                    mapsUrl = `https://www.google.com/maps/search/?api=1&query=${loc.coordinates.lat},${loc.coordinates.lng}`;
+                } else {
+                    mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc.address)}`;
+                }
+            } else if (locations.length <= 10) {
+                // Multiple locations (up to 10) - use directions mode for best compatibility
                 mapsUrl = 'https://www.google.com/maps/dir/';
-                locations.forEach(loc => {
-                    if (loc.coordinates) {
-                        mapsUrl += `${loc.coordinates.lat},${loc.coordinates.lng}/`;
-                    } else {
+                
+                // Add current location as starting point
+                mapsUrl += 'Current+Location/';
+                
+                // Add each location as a waypoint
+                locations.forEach((loc, index) => {
+                    if (loc.address) {
                         mapsUrl += `${encodeURIComponent(loc.address)}/`;
+                    } else if (loc.coordinates) {
+                        mapsUrl += `${loc.coordinates.lat},${loc.coordinates.lng}/`;
                     }
                 });
-            } else if (mapMode === 'custom' && settings.backendUrl) {
-                // Custom backend URL that will redirect to Maps with custom markers
-                mapsUrl = `${settings.backendUrl}/map`;
+                
+                // Add travel mode parameter
+                mapsUrl += '?travelmode=driving';
             } else {
-                // Standard Google Maps with search query
-                if (locations.length === 1) {
-                    const loc = locations[0];
-                    mapsUrl = `https://maps.google.com/maps?q=${encodeURIComponent(loc.address)}`;
-                } else {
-                    // Multiple locations - create a map with markers
-                    mapsUrl = 'https://maps.google.com/maps?';
-                    const markers = locations.map((loc, i) => {
-                        if (loc.coordinates) {
-                            return `&markers=color:yellow%7Clabel:${i+1}%7C${loc.coordinates.lat},${loc.coordinates.lng}`;
-                        } else {
-                            return `&markers=color:yellow%7Clabel:${i+1}%7C${encodeURIComponent(loc.address)}`;
-                        }
-                    }).join('');
-                    mapsUrl += markers;
-                }
+                // Too many locations - create a search query for the first location
+                // and notify user
+                const loc = locations[0];
+                mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(loc.address)}`;
+                showMessage('Note: Google Maps URL limit reached. Showing first location only. For all locations, use fewer than 10 locations or implement backend solution.', 'warning');
             }
             
             // Create QR code
