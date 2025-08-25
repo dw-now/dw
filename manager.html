@@ -1128,7 +1128,7 @@ app.get('/map', async (req, res) => {
             let mapsUrl = '';
             
             // Option 1: If using GitHub Pages with custom map
-            if (GITHUB_PAGES_URL && GITHUB_PAGES_URL !== 'https://dw-now.github.io/dw/') {
+            if (GITHUB_PAGES_URL && GITHUB_PAGES_URL !== 'https://dw-now.github.io/location-manager/') {
                 // Encode locations in URL hash for the map page
                 const locationData = encodeURIComponent(JSON.stringify(locations));
                 mapsUrl = `${GITHUB_PAGES_URL}#${locationData}`;
